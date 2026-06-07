@@ -79,4 +79,13 @@ final class LayoutPlannerTests: XCTestCase {
 
         XCTAssertEqual(move, LayoutMove(itemUID: "a", target: .sectionBoundary(.hidden)))
     }
+
+    func testNextCrossSectionMoveToVisibleUsesVisibleBoundary() {
+        let current = SectionOrder(visible: ["a"], hidden: ["b"])
+        let desired = SectionOrder(visible: ["a", "b"], hidden: [])
+
+        let move = LayoutPlanner().nextMove(currentOrder: current, desiredOrder: desired)
+
+        XCTAssertEqual(move, LayoutMove(itemUID: "b", target: .sectionBoundary(.visible)))
+    }
 }

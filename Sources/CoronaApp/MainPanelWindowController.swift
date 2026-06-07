@@ -206,7 +206,12 @@ final class MainPanelViewModel: ObservableObject {
             CoronaDebugLog.log("main.apply result=\(result.statusTitle)")
             statusMessage = result.statusTitle
             isApplying = false
-            refresh()
+            if result.isSuccessfulApply {
+                refresh()
+            } else {
+                CoronaDebugLog.log("main.apply keepDraftAfterFailure visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
+                rebuildRows()
+            }
         }
     }
 
@@ -235,10 +240,11 @@ final class MainPanelViewModel: ObservableObject {
 
     private func preferredOrder(cache: ItemCache) -> SectionOrder {
         let savedOrder = layoutStore.loadSavedSectionOrder()
+        let currentOrder = SectionOrder(cache: cache)
         guard !savedOrder.isEmpty else {
-            return SectionOrder(cache: cache)
+            return currentOrder
         }
-        return LayoutPlanner().mergedOrder(cache: cache, preference: layoutPreference())
+        return orderByCurrentSections(currentOrder: currentOrder, savedOrder: savedOrder)
     }
 
     private func layoutPreference() -> LayoutPreference {
@@ -281,6 +287,21 @@ final class MainPanelViewModel: ObservableObject {
             result.visible.append(uid)
         }
         return result
+    }
+
+    private func orderByCurrentSections(currentOrder: SectionOrder, savedOrder: SectionOrder) -> SectionOrder {
+        SectionOrder(
+            visible: ordered(currentOrder.visible, using: savedOrder.visible),
+            hidden: ordered(currentOrder.hidden, using: savedOrder.hidden),
+            alwaysHidden: ordered(currentOrder.alwaysHidden, using: savedOrder.alwaysHidden)
+        )
+    }
+
+    private func ordered(_ currentUIDs: [String], using savedUIDs: [String]) -> [String] {
+        let currentSet = Set(currentUIDs)
+        let savedInCurrentSection = savedUIDs.filter { currentSet.contains($0) }
+        let newOrMovedUIDs = currentUIDs.filter { !savedInCurrentSection.contains($0) }
+        return savedInCurrentSection + newOrMovedUIDs
     }
 
     private func makeRow(uid: String, isHidden: Bool) -> Row? {

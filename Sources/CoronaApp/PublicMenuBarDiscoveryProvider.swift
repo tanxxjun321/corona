@@ -11,7 +11,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
     }
 
     func snapshot() async throws -> MenuBarSnapshot {
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        let options: CGWindowListOption = [.optionAll, .excludeDesktopElements]
         guard let rawWindows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
             return MenuBarSnapshot(displayID: nil, items: [])
         }
@@ -20,7 +20,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
         let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: menuBarCandidates)
         CoronaDebugLog.log("discovery.snapshot rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) assigned=\(assigned.count)")
         for item in assigned {
-            CoronaDebugLog.log("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") movable=\(item.isMovable)")
+            CoronaDebugLog.log("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") onScreen=\(item.isOnScreen) canBeHidden=\(item.canBeHidden) movable=\(item.isMovable)")
         }
         return MenuBarSnapshot(displayID: CGMainDisplayID(), items: assigned)
     }
@@ -75,11 +75,16 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
     }
 
     private func isLikelyMenuBarWindow(bounds: CGRect) -> Bool {
-        guard bounds.width > 0, bounds.height > 0, bounds.height <= 40 else {
+        let mainDisplayFrame = CGDisplayBounds(CGMainDisplayID())
+        let maximumStatusItemWidth = min(mainDisplayFrame.width * 0.35, 360)
+
+        guard bounds.width >= 8,
+              bounds.width <= maximumStatusItemWidth,
+              bounds.height >= 16,
+              bounds.height <= 40 else {
             return false
         }
 
-        let mainDisplayFrame = CGDisplayBounds(CGMainDisplayID())
         return abs(bounds.minY - mainDisplayFrame.minY) <= 2
             || abs(bounds.maxY - mainDisplayFrame.maxY) <= 2
     }

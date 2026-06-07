@@ -175,14 +175,23 @@ final class LayoutEditorViewModel: ObservableObject {
 
     private func preferredOrder(cache: ItemCache) -> SectionOrder {
         let savedOrder = layoutStore.loadSavedSectionOrder()
+        let currentOrder = SectionOrder(cache: cache)
         guard !savedOrder.isEmpty else {
-            return SectionOrder(cache: cache)
+            return currentOrder
         }
 
-        return LayoutPlanner().mergedOrder(
-            cache: cache,
-            preference: layoutPreference()
+        return SectionOrder(
+            visible: ordered(currentOrder.visible, using: savedOrder.visible),
+            hidden: ordered(currentOrder.hidden, using: savedOrder.hidden),
+            alwaysHidden: ordered(currentOrder.alwaysHidden, using: savedOrder.alwaysHidden)
         )
+    }
+
+    private func ordered(_ currentUIDs: [String], using savedUIDs: [String]) -> [String] {
+        let currentSet = Set(currentUIDs)
+        let savedInCurrentSection = savedUIDs.filter { currentSet.contains($0) }
+        let newOrMovedUIDs = currentUIDs.filter { !savedInCurrentSection.contains($0) }
+        return savedInCurrentSection + newOrMovedUIDs
     }
 
     private func rebuildRows() {

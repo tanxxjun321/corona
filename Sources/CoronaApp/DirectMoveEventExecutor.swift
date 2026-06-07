@@ -4,6 +4,7 @@ import CoronaCore
 struct DirectMoveEventExecutor: MoveEventExecutor {
     private enum Constants {
         static let edgeInset: CGFloat = 2
+        static let minimumDropGap: CGFloat = 8
         static let dragSteps = 12
         static let stepDelayNanoseconds: UInt64 = 12_000_000
         static let inputPauseNanoseconds: UInt64 = 180_000_000
@@ -64,7 +65,7 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
 
     private func drag(item: MenuBarItem, to destination: MoveDestination) async throws {
         let source = CGPoint(x: item.bounds.midX, y: item.bounds.midY)
-        let target = destinationPoint(for: destination, sourceY: source.y)
+        let target = destinationPoint(for: destination, movingItemBounds: item.bounds, sourceY: source.y)
         CoronaDebugLog.log("executor.drag uid=\(item.tag.stableIdentifier) source=\(source.debugDescription) target=\(target.debugDescription)")
         let originalMouseLocation = CGEvent(source: nil)?.location
         var didPostMouseUp = false
@@ -148,12 +149,17 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
         }
     }
 
-    private func destinationPoint(for destination: MoveDestination, sourceY: CGFloat) -> CGPoint {
+    private func destinationPoint(
+        for destination: MoveDestination,
+        movingItemBounds: CGRect,
+        sourceY: CGFloat
+    ) -> CGPoint {
+        let midpointOffset = (movingItemBounds.width / 2) + Constants.minimumDropGap
         switch destination {
         case .leftOfItem(let item):
-            return CGPoint(x: item.bounds.minX - Constants.edgeInset, y: sourceY)
+            return CGPoint(x: item.bounds.minX - midpointOffset, y: sourceY)
         case .rightOfItem(let item):
-            return CGPoint(x: item.bounds.maxX + Constants.edgeInset, y: sourceY)
+            return CGPoint(x: item.bounds.maxX + midpointOffset, y: sourceY)
         }
     }
 

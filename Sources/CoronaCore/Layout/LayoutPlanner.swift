@@ -116,6 +116,9 @@ public struct LayoutPlanner {
         for section in MenuBarSection.allCases {
             for uid in desiredOrder[section] {
                 if currentSectionByUID[uid] != desiredSectionByUID[uid] {
+                    if section == .visible {
+                        return LayoutMove(itemUID: uid, target: .sectionBoundary(section))
+                    }
                     if let previous = previousUID(before: uid, in: desiredOrder[section]) {
                         return LayoutMove(itemUID: uid, target: .rightOfUID(previous))
                     }

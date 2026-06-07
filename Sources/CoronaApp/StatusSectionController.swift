@@ -76,6 +76,9 @@ final class StatusSectionController {
         }
         if alwaysHiddenControlItem.isVisible,
            let alwaysHidden = controlItem(alwaysHiddenControlItem, title: "alwaysHiddenControl") {
+            if let hidden = result[.hidden], alwaysHidden.bounds.minX > hidden.bounds.minX {
+                result[.visible] = alwaysHidden
+            }
             result[.alwaysHidden] = alwaysHidden
         }
         return result

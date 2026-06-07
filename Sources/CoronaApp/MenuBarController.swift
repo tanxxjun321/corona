@@ -364,9 +364,13 @@ final class MenuBarController {
         try? await Task.sleep(nanoseconds: 180_000_000)
         let result = await ensureLayoutApplicationController().applySavedLayout()
 
-        sectionController.setHiddenSectionVisible(false)
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionVisible(false)
+        if result.isSuccessfulApply {
+            sectionController.setHiddenSectionVisible(false)
+            if settings.enableAlwaysHiddenSection {
+                sectionController.setAlwaysHiddenSectionVisible(false)
+            }
+        } else {
+            CoronaDebugLog.log("layout.applySavedLayout keepSectionsVisible result=\(result.statusTitle)")
         }
         rebuildMenu()
         return result
@@ -429,6 +433,17 @@ final class MenuBarController {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+extension LayoutApplicationResult {
+    var isSuccessfulApply: Bool {
+        switch self {
+        case .satisfied, .applied, .moved:
+            return true
+        case .missingBoundary, .waitingForItem, .waitingForDestination, .failed:
+            return false
+        }
     }
 }
 

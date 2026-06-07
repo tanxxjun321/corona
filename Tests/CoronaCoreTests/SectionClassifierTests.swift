@@ -39,6 +39,35 @@ final class SectionClassifierTests: XCTestCase {
         XCTAssertEqual(section, .alwaysHidden)
     }
 
+    func testClassifiesWhenAlwaysHiddenControlIsRightOfHiddenControl() {
+        let boundary = SectionBoundary(
+            hiddenControlBounds: CGRect(x: 500, y: 0, width: 10, height: 22),
+            alwaysHiddenControlBounds: CGRect(x: 650, y: 0, width: 10, height: 22)
+        )
+
+        XCTAssertEqual(
+            SectionClassifier().classify(
+                itemBounds: CGRect(x: 430, y: 0, width: 40, height: 22),
+                boundary: boundary
+            ),
+            .alwaysHidden
+        )
+        XCTAssertEqual(
+            SectionClassifier().classify(
+                itemBounds: CGRect(x: 560, y: 0, width: 40, height: 22),
+                boundary: boundary
+            ),
+            .hidden
+        )
+        XCTAssertEqual(
+            SectionClassifier().classify(
+                itemBounds: CGRect(x: 690, y: 0, width: 40, height: 22),
+                boundary: boundary
+            ),
+            .visible
+        )
+    }
+
     func testBuildsWindowSectionMap() {
         let items = [
             makeItem(windowID: 1, namespace: "a", title: "A", sourcePID: 10),

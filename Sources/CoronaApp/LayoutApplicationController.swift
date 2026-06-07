@@ -214,7 +214,7 @@ final class LayoutApplicationController {
                         maxAttempts: 1
                     )
                     let refreshedCache = try await cacheController.cache(boundary: boundary)
-                    CoronaDebugLog.log("layout.move refreshed visible=\(refreshedCache.visibleItems.map(\.tag.stableIdentifier)) hidden=\(refreshedCache.hiddenItems.map(\.tag.stableIdentifier))")
+                    CoronaDebugLog.log("layout.move refreshed visible=\(refreshedCache.visibleItems.map(\.tag.stableIdentifier)) hidden=\(refreshedCache.hiddenItems.map(\.tag.stableIdentifier)) alwaysHidden=\(refreshedCache.alwaysHiddenItems.map(\.tag.stableIdentifier))")
                     if resolvedMove.destination.isSatisfied(for: resolvedMove.plannedMove.itemUID, in: refreshedCache) {
                         logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: true))
                         CoronaDebugLog.log("layout.move success uid=\(resolvedMove.plannedMove.itemUID)")

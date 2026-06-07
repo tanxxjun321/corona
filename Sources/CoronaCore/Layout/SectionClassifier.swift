@@ -21,12 +21,30 @@ public struct SectionClassifier {
         itemBounds: CGRect,
         boundary: SectionBoundary
     ) -> MenuBarSection {
-        if let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds,
-           itemBounds.maxX <= alwaysHiddenControlBounds.minX {
-            return .alwaysHidden
+        guard let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds else {
+            if itemBounds.maxX <= boundary.hiddenControlBounds.minX {
+                return .hidden
+            }
+            return .visible
+        }
+
+        if alwaysHiddenControlBounds.minX < boundary.hiddenControlBounds.minX {
+            if itemBounds.maxX <= alwaysHiddenControlBounds.minX {
+                return .alwaysHidden
+            }
+
+            if itemBounds.maxX <= boundary.hiddenControlBounds.minX {
+                return .hidden
+            }
+
+            return .visible
         }
 
         if itemBounds.maxX <= boundary.hiddenControlBounds.minX {
+            return .alwaysHidden
+        }
+
+        if itemBounds.maxX <= alwaysHiddenControlBounds.minX {
             return .hidden
         }
 
