@@ -15,6 +15,7 @@ final class MenuBarController {
     private var hiddenItemsPanelWindowController: HiddenItemsPanelWindowController?
     private var layoutApplicationController: LayoutApplicationController?
     private var lastLayoutApplicationResult: LayoutApplicationResult?
+    private var didScheduleInitialLayoutRestore = false
 
     init(
         settingsStore: SettingsStore,
@@ -33,6 +34,7 @@ final class MenuBarController {
         configureStatusItem()
         sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
         rebuildMenu()
+        scheduleInitialLayoutRestore()
     }
 
     private func configureStatusItem() {
@@ -130,6 +132,21 @@ final class MenuBarController {
 
         statusItem.menu = menu
         updateStatusIcon(for: snapshot)
+    }
+
+    private func scheduleInitialLayoutRestore() {
+        guard !didScheduleInitialLayoutRestore else { return }
+        didScheduleInitialLayoutRestore = true
+
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard let self, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
+            let result = await self.ensureLayoutApplicationController().applySavedLayout()
+            await MainActor.run {
+                self.lastLayoutApplicationResult = result
+                self.rebuildMenu()
+            }
+        }
     }
 
     private func statusTitle(for snapshot: PermissionSnapshot) -> String {
