@@ -616,21 +616,25 @@ private struct PreviewSection: View {
                 ZStack(alignment: .leading) {
                     MenuBarRailBackground()
                     ScrollView(.horizontal) {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 0) {
+                            InsertDropZone(
+                                section: section,
+                                targetIndex: 0,
+                                model: model
+                            )
                             ForEach(Array(rows.enumerated()), id: \.element.uid) { index, row in
-                                PreviewChip(
-                                    row: row,
-                                    isSelected: model.selectedUID == row.uid,
-                                    model: model
-                                )
-                                .onDrop(
-                                    of: [UTType.plainText],
-                                    delegate: MenuBarItemDropDelegate(
-                                        section: section,
-                                        targetIndex: index,
+                                HStack(spacing: 0) {
+                                    PreviewChip(
+                                        row: row,
+                                        isSelected: model.selectedUID == row.uid,
                                         model: model
                                     )
-                                )
+                                    InsertDropZone(
+                                        section: section,
+                                        targetIndex: index + 1,
+                                        model: model
+                                    )
+                                }
                             }
                             if rows.isEmpty, let placeholder {
                                 Text(placeholder)
@@ -668,8 +672,68 @@ private struct MenuBarItemDropDelegate: DropDelegate {
     var targetIndex: Int
     var model: MainPanelViewModel
 
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [UTType.plainText])
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
     func performDrop(info: DropInfo) -> Bool {
         guard let provider = info.itemProviders(for: [UTType.plainText]).first else {
+            return false
+        }
+        provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
+            let uid: String?
+            if let data = item as? Data {
+                uid = String(data: data, encoding: .utf8)
+            } else {
+                uid = item as? String
+            }
+            guard let uid else { return }
+            Task { @MainActor in
+                model.move(uid: uid, to: section, at: targetIndex)
+            }
+        }
+        return true
+    }
+}
+
+private enum MenuBarDragPayload {
+    static func provider(uid: String) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(
+            forTypeIdentifier: UTType.plainText.identifier,
+            visibility: .all
+        ) { completion in
+            completion(uid.data(using: .utf8), nil)
+            return nil
+        }
+        return provider
+    }
+}
+
+private struct InsertDropZone: View {
+    var section: MenuBarSection
+    var targetIndex: Int
+    @ObservedObject var model: MainPanelViewModel
+    @State private var isTargeted = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isTargeted ? Color.accentColor.opacity(0.9) : Color.clear)
+            .frame(width: 14, height: 34)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .onDrop(
+                of: [UTType.plainText],
+                isTargeted: $isTargeted,
+                perform: performDrop(providers:)
+            )
+    }
+
+    private func performDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) }) else {
             return false
         }
         provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
@@ -731,9 +795,9 @@ private struct PreviewChip: View {
         .buttonStyle(.plain)
         .help("\(row.title) - \(row.owner)")
         .onDrag {
-            NSItemProvider(object: row.uid as NSString)
+            MenuBarDragPayload.provider(uid: row.uid)
         }
-        .disabled(!row.isMovable)
+        .opacity(row.isMovable ? 1 : 0.58)
     }
 }
 
