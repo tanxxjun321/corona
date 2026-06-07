@@ -7,9 +7,11 @@ final class MenuBarController {
     private let statusItem: NSStatusItem
     private let sectionController: StatusSectionController
     private let discoveryProvider: MenuBarDiscoveryProvider
+    private let layoutStore: LayoutPersistenceStore
     private var settings: AppSettings
     private var settingsWindowController: SettingsWindowController?
     private var scanResultsWindowController: ScanResultsWindowController?
+    private var layoutEditorWindowController: LayoutEditorWindowController?
 
     init(
         settingsStore: SettingsStore,
@@ -20,6 +22,7 @@ final class MenuBarController {
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.sectionController = StatusSectionController()
         self.discoveryProvider = PublicMenuBarDiscoveryProvider()
+        self.layoutStore = UserDefaultsLayoutPersistenceStore()
         self.settings = settingsStore.load()
     }
 
@@ -147,8 +150,14 @@ final class MenuBarController {
     }
 
     @objc private func openLayoutEditor() {
-        // P2/P3 will attach the drag-and-drop layout editor here.
-        NSSound.beep()
+        if layoutEditorWindowController == nil {
+            layoutEditorWindowController = LayoutEditorWindowController(
+                provider: discoveryProvider,
+                layoutStore: layoutStore,
+                settingsStore: settingsStore
+            )
+        }
+        layoutEditorWindowController?.show()
     }
 
     @objc private func openScanResults() {
