@@ -6,12 +6,12 @@ final class LayoutEditorWindowController: NSWindowController {
     private let model: LayoutEditorViewModel
 
     init(
-        provider: MenuBarDiscoveryProvider,
+        cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         settingsStore: SettingsStore
     ) {
         self.model = LayoutEditorViewModel(
-            provider: provider,
+            cacheController: cacheController,
             layoutStore: layoutStore,
             settingsStore: settingsStore
         )
@@ -55,18 +55,18 @@ final class LayoutEditorViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var hasUnsavedChanges = false
 
-    private let provider: MenuBarDiscoveryProvider
+    private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private let settingsStore: SettingsStore
     private var itemByUID: [String: MenuBarItem] = [:]
     private var draft = LayoutDraft()
 
     init(
-        provider: MenuBarDiscoveryProvider,
+        cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         settingsStore: SettingsStore
     ) {
-        self.provider = provider
+        self.cacheController = cacheController
         self.layoutStore = layoutStore
         self.settingsStore = settingsStore
     }
@@ -76,7 +76,7 @@ final class LayoutEditorViewModel: ObservableObject {
         errorMessage = nil
         Task {
             do {
-                let snapshot = try await provider.snapshot()
+                let snapshot = try await cacheController.refresh()
                 let cache = ItemCache(
                     displayID: snapshot.displayID,
                     visibleItems: snapshot.items,

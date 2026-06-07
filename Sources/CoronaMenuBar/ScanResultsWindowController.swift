@@ -5,8 +5,8 @@ import SwiftUI
 final class ScanResultsWindowController: NSWindowController {
     private let model: ScanResultsViewModel
 
-    init(provider: MenuBarDiscoveryProvider) {
-        self.model = ScanResultsViewModel(provider: provider)
+    init(cacheController: MenuBarCacheController) {
+        self.model = ScanResultsViewModel(cacheController: cacheController)
         let hostingController = NSHostingController(rootView: ScanResultsView(model: model))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Menu Bar Items"
@@ -36,10 +36,10 @@ final class ScanResultsViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var isLoading = false
 
-    private let provider: MenuBarDiscoveryProvider
+    private let cacheController: MenuBarCacheController
 
-    init(provider: MenuBarDiscoveryProvider) {
-        self.provider = provider
+    init(cacheController: MenuBarCacheController) {
+        self.cacheController = cacheController
     }
 
     func refresh() {
@@ -47,7 +47,7 @@ final class ScanResultsViewModel: ObservableObject {
         errorMessage = nil
         Task {
             do {
-                let snapshot = try await provider.snapshot()
+                let snapshot = try await cacheController.refresh()
                 items = snapshot.items.sorted { lhs, rhs in
                     if lhs.bounds.minX != rhs.bounds.minX {
                         return lhs.bounds.minX < rhs.bounds.minX

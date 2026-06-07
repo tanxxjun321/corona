@@ -4,5 +4,7 @@ CompilationCache.noindex/
 .swiftpm/
 DerivedData/
 *.xcuserdata/
+xcuserdata/
+*.xcodeproj/xcuserdata/
 *.xcuserstate
 .DS_Store

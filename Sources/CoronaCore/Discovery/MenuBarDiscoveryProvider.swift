@@ -10,7 +10,7 @@ public struct MenuBarSnapshot: Equatable, Sendable {
     }
 }
 
-public protocol MenuBarDiscoveryProvider {
+public protocol MenuBarDiscoveryProvider: Sendable {
     var capability: DiscoveryCapability { get }
     func snapshot() async throws -> MenuBarSnapshot
 }

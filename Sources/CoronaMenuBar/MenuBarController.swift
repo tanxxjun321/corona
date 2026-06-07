@@ -6,7 +6,7 @@ final class MenuBarController {
     private let permissionChecker: SystemPermissionChecker
     private let statusItem: NSStatusItem
     private let sectionController: StatusSectionController
-    private let discoveryProvider: MenuBarDiscoveryProvider
+    private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private var settings: AppSettings
     private var settingsWindowController: SettingsWindowController?
@@ -22,7 +22,7 @@ final class MenuBarController {
         self.permissionChecker = permissionChecker
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.sectionController = StatusSectionController()
-        self.discoveryProvider = PublicMenuBarDiscoveryProvider()
+        self.cacheController = MenuBarCacheController(provider: PublicMenuBarDiscoveryProvider())
         self.layoutStore = UserDefaultsLayoutPersistenceStore()
         self.settings = settingsStore.load()
     }
@@ -162,7 +162,7 @@ final class MenuBarController {
     @objc private func openLayoutEditor() {
         if layoutEditorWindowController == nil {
             layoutEditorWindowController = LayoutEditorWindowController(
-                provider: discoveryProvider,
+                cacheController: cacheController,
                 layoutStore: layoutStore,
                 settingsStore: settingsStore
             )
@@ -173,7 +173,7 @@ final class MenuBarController {
     @objc private func openHiddenPanel() {
         if hiddenItemsPanelWindowController == nil {
             hiddenItemsPanelWindowController = HiddenItemsPanelWindowController(
-                provider: discoveryProvider,
+                cacheController: cacheController,
                 layoutStore: layoutStore
             )
         }
@@ -182,7 +182,7 @@ final class MenuBarController {
 
     @objc private func openScanResults() {
         if scanResultsWindowController == nil {
-            scanResultsWindowController = ScanResultsWindowController(provider: discoveryProvider)
+            scanResultsWindowController = ScanResultsWindowController(cacheController: cacheController)
         }
         scanResultsWindowController?.show()
     }

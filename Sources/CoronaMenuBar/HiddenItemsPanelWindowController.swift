@@ -6,10 +6,10 @@ final class HiddenItemsPanelWindowController: NSWindowController {
     private let model: HiddenItemsPanelViewModel
 
     init(
-        provider: MenuBarDiscoveryProvider,
+        cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore
     ) {
-        self.model = HiddenItemsPanelViewModel(provider: provider, layoutStore: layoutStore)
+        self.model = HiddenItemsPanelViewModel(cacheController: cacheController, layoutStore: layoutStore)
         let hostingController = NSHostingController(rootView: HiddenItemsPanelView(model: model))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Hidden Items"
@@ -48,14 +48,14 @@ final class HiddenItemsPanelViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
 
-    private let provider: MenuBarDiscoveryProvider
+    private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
 
     init(
-        provider: MenuBarDiscoveryProvider,
+        cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore
     ) {
-        self.provider = provider
+        self.cacheController = cacheController
         self.layoutStore = layoutStore
     }
 
@@ -64,7 +64,7 @@ final class HiddenItemsPanelViewModel: ObservableObject {
         errorMessage = nil
         Task {
             do {
-                let snapshot = try await provider.snapshot()
+                let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
                 let itemByUID = Dictionary(uniqueKeysWithValues: snapshot.items.map { item in
                     (item.tag.stableIdentifier, item)
                 })
