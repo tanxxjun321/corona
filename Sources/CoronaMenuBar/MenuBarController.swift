@@ -194,7 +194,10 @@ final class MenuBarController {
         if hiddenItemsPanelWindowController == nil {
             hiddenItemsPanelWindowController = HiddenItemsPanelWindowController(
                 cacheController: cacheController,
-                layoutStore: layoutStore
+                layoutStore: layoutStore,
+                revealHandler: { [weak self] uid in
+                    await self?.ensureLayoutApplicationController().reveal(uid: uid) ?? .failed("Controller unavailable")
+                }
             )
         }
         hiddenItemsPanelWindowController?.show()
@@ -208,28 +211,36 @@ final class MenuBarController {
     }
 
     @objc private func applySavedLayout() {
-        if layoutApplicationController == nil {
-            layoutApplicationController = LayoutApplicationController(
-                cacheController: cacheController,
-                layoutStore: layoutStore,
-                settingsStore: settingsStore,
-                boundaryProvider: { [weak self] in
-                    self?.sectionController.currentBoundary()
-                },
-                boundaryItemsProvider: { [weak self] in
-                    self?.sectionController.boundaryItems() ?? [:]
-                }
-            )
-        }
+        let layoutApplicationController = ensureLayoutApplicationController()
 
         Task { [weak self] in
-            guard let self, let layoutApplicationController else { return }
+            guard let self else { return }
             let result = await layoutApplicationController.applySavedLayout()
             await MainActor.run {
                 self.lastLayoutApplicationResult = result
                 self.rebuildMenu()
             }
         }
+    }
+
+    private func ensureLayoutApplicationController() -> LayoutApplicationController {
+        if let layoutApplicationController {
+            return layoutApplicationController
+        }
+
+        let controller = LayoutApplicationController(
+            cacheController: cacheController,
+            layoutStore: layoutStore,
+            settingsStore: settingsStore,
+            boundaryProvider: { [weak self] in
+                self?.sectionController.currentBoundary()
+            },
+            boundaryItemsProvider: { [weak self] in
+                self?.sectionController.boundaryItems() ?? [:]
+            }
+        )
+        layoutApplicationController = controller
+        return controller
     }
 
     @objc private func openSettings() {

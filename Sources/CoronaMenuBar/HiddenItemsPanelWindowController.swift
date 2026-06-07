@@ -7,9 +7,14 @@ final class HiddenItemsPanelWindowController: NSWindowController {
 
     init(
         cacheController: MenuBarCacheController,
-        layoutStore: LayoutPersistenceStore
+        layoutStore: LayoutPersistenceStore,
+        revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
-        self.model = HiddenItemsPanelViewModel(cacheController: cacheController, layoutStore: layoutStore)
+        self.model = HiddenItemsPanelViewModel(
+            cacheController: cacheController,
+            layoutStore: layoutStore,
+            revealHandler: revealHandler
+        )
         let hostingController = NSHostingController(rootView: HiddenItemsPanelView(model: model))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Hidden Items"
@@ -47,16 +52,21 @@ final class HiddenItemsPanelViewModel: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var revealMessage: String?
+    @Published private(set) var revealingUID: String?
 
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
+    private let revealHandler: @MainActor (String) async -> LayoutApplicationResult
 
     init(
         cacheController: MenuBarCacheController,
-        layoutStore: LayoutPersistenceStore
+        layoutStore: LayoutPersistenceStore,
+        revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.cacheController = cacheController
         self.layoutStore = layoutStore
+        self.revealHandler = revealHandler
     }
 
     func refresh() {
@@ -75,6 +85,17 @@ final class HiddenItemsPanelViewModel: ObservableObject {
                 errorMessage = String(describing: error)
             }
             isLoading = false
+        }
+    }
+
+    func reveal(uid: String) {
+        revealingUID = uid
+        revealMessage = nil
+        Task {
+            let result = await revealHandler(uid)
+            revealMessage = result.statusTitle
+            revealingUID = nil
+            refresh()
         }
     }
 
@@ -139,34 +160,51 @@ struct HiddenItemsPanelView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(model.rows) { row in
-                HStack(spacing: 10) {
-                    Image(systemName: row.isAvailable ? "app.dashed" : "questionmark.app.dashed")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 20)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.title)
-                            .lineLimit(1)
-                        HStack(spacing: 6) {
-                            Text(row.owner)
-                            Text(sectionLabel(row.section))
-                        }
+            VStack(spacing: 0) {
+                if let revealMessage = model.revealMessage {
+                    Text(revealMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        NSSound.beep()
-                    } label: {
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Temporary reveal will be enabled after the move executor is connected")
-                    .disabled(!row.isAvailable)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                    Divider()
                 }
-                .padding(.vertical, 4)
+
+                List(model.rows) { row in
+                    HStack(spacing: 10) {
+                        Image(systemName: row.isAvailable ? "app.dashed" : "questionmark.app.dashed")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.title)
+                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(row.owner)
+                                Text(sectionLabel(row.section))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            model.reveal(uid: row.uid)
+                        } label: {
+                            if model.revealingUID == row.uid {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.up.right")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Reveal")
+                        .disabled(!row.isAvailable || model.revealingUID != nil)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .listStyle(.plain)
             }
-            .listStyle(.plain)
         }
     }
 

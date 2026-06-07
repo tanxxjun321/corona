@@ -70,6 +70,7 @@ final class StatusSectionController {
     func boundaryItems() -> [MenuBarSection: MenuBarItem] {
         var result: [MenuBarSection: MenuBarItem] = [:]
         if let hidden = controlItem(hiddenControlItem, title: "hiddenControl") {
+            result[.visible] = hidden
             result[.hidden] = hidden
         }
         if alwaysHiddenControlItem.isVisible,
