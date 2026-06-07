@@ -343,20 +343,28 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func visualRows(for order: SectionOrder) -> [Row] {
-        var physicalOrder = SectionOrder()
+        var draftOrderedCache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
         for uid in order.visible + order.hidden + order.alwaysHidden {
-            guard itemByUID[uid] != nil else { continue }
-            physicalOrder[physicalSectionByUID[uid] ?? .visible].append(uid)
+            guard let item = itemByUID[uid],
+                  let desiredSection = order.section(containing: uid) else { continue }
+            switch desiredSection {
+            case .visible:
+                draftOrderedCache.visibleItems.append(item)
+            case .hidden:
+                draftOrderedCache.hiddenItems.append(item)
+            case .alwaysHidden:
+                draftOrderedCache.alwaysHiddenItems.append(item)
+            }
         }
-        let cache = ItemCache(
-            displayID: nil,
-            visibleItems: physicalOrder.visible.compactMap { itemByUID[$0] },
-            hiddenItems: physicalOrder.hidden.compactMap { itemByUID[$0] },
-            alwaysHiddenItems: physicalOrder.alwaysHidden.compactMap { itemByUID[$0] }
-        )
-        let snapshot = visualSnapshotProvider.snapshot(cache: cache, desiredOrder: order)
-        return snapshot.items.compactMap { item in
-            makeRow(from: item)
+
+        let snapshot = visualSnapshotProvider.snapshot(cache: draftOrderedCache, desiredOrder: order)
+        let rowByUID = Dictionary(uniqueKeysWithValues: snapshot.items.compactMap { item -> (String, Row)? in
+            guard let row = makeRow(from: item) else { return nil }
+            return (row.uid, row)
+        })
+
+        return (order.visible + order.hidden + order.alwaysHidden).compactMap { uid in
+            rowByUID[uid]
         }
     }
 
