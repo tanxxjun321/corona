@@ -1,4 +1,5 @@
 import AppKit
+import CoronaCore
 
 enum StatusSectionVisibility {
     case shown
@@ -55,6 +56,29 @@ final class StatusSectionController {
         }
     }
 
+    func currentBoundary() -> SectionBoundary? {
+        guard let hiddenBounds = statusItemBounds(hiddenControlItem) else {
+            return nil
+        }
+
+        return SectionBoundary(
+            hiddenControlBounds: hiddenBounds,
+            alwaysHiddenControlBounds: alwaysHiddenControlItem.isVisible ? statusItemBounds(alwaysHiddenControlItem) : nil
+        )
+    }
+
+    func boundaryItems() -> [MenuBarSection: MenuBarItem] {
+        var result: [MenuBarSection: MenuBarItem] = [:]
+        if let hidden = controlItem(hiddenControlItem, title: "hiddenControl") {
+            result[.hidden] = hidden
+        }
+        if alwaysHiddenControlItem.isVisible,
+           let alwaysHidden = controlItem(alwaysHiddenControlItem, title: "alwaysHiddenControl") {
+            result[.alwaysHidden] = alwaysHidden
+        }
+        return result
+    }
+
     private func configureControlItem(_ item: NSStatusItem) {
         item.button?.image = nil
         item.button?.title = ""
@@ -73,5 +97,28 @@ final class StatusSectionController {
             item.button?.alphaValue = 0
             item.button?.isEnabled = false
         }
+    }
+
+    private func statusItemBounds(_ item: NSStatusItem) -> CGRect? {
+        item.button?.window?.frame
+    }
+
+    private func controlItem(_ item: NSStatusItem, title: String) -> MenuBarItem? {
+        guard let window = item.button?.window else { return nil }
+        return MenuBarItem(
+            tag: MenuBarItemTag(
+                namespace: "com.ltz.corona.control",
+                title: title,
+                volatileWindowID: UInt32(window.windowNumber)
+            ),
+            windowID: UInt32(window.windowNumber),
+            ownerPID: Int32(ProcessInfo.processInfo.processIdentifier),
+            sourcePID: Int32(ProcessInfo.processInfo.processIdentifier),
+            bounds: window.frame,
+            title: title,
+            isOnScreen: true,
+            isMovable: false,
+            canBeHidden: false
+        )
     }
 }

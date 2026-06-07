@@ -39,4 +39,13 @@ public actor MenuBarCacheController {
     public func cachedSnapshotValue() -> MenuBarSnapshot? {
         cachedSnapshot
     }
+
+    public func cache(
+        boundary: SectionBoundary,
+        refreshIfNeeded: Bool = true
+    ) async throws -> ItemCache {
+        let snapshot = try await snapshot(refreshIfNeeded: refreshIfNeeded)
+        let sectionByWindowID = SectionClassifier().classify(items: snapshot.items, boundary: boundary)
+        return ItemCacheBuilder().build(snapshot: snapshot, sectionByWindowID: sectionByWindowID)
+    }
 }
