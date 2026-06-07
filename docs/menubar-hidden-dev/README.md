@@ -23,6 +23,7 @@
 - [04-persistence-and-recovery.md](04-persistence-and-recovery.md)：持久化、启动 settling、pending relocation 和异常恢复。
 - [05-ui-and-interactions.md](05-ui-and-interactions.md)：用户界面、交互、无截图权限降级。
 - [06-testing-and-acceptance.md](06-testing-and-acceptance.md)：测试矩阵、手工验收、诊断日志。
+- [07-implementation-plan.md](07-implementation-plan.md)：工程决策、阶段开发步骤和代码质量约束。
 
 ## 实施原则
 
