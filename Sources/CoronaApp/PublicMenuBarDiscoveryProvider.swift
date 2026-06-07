@@ -20,7 +20,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
         let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: menuBarCandidates)
         CoronaDebugLog.log("discovery.snapshot rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) assigned=\(assigned.count)")
         for item in assigned {
-            CoronaDebugLog.log("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") onScreen=\(item.isOnScreen) canBeHidden=\(item.canBeHidden) movable=\(item.isMovable)")
+            CoronaDebugLog.verbose("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") onScreen=\(item.isOnScreen) canBeHidden=\(item.canBeHidden) movable=\(item.isMovable)")
         }
         return MenuBarSnapshot(displayID: CGMainDisplayID(), items: assigned)
     }

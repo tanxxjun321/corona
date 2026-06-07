@@ -31,6 +31,11 @@ enum CoronaDebugLog {
         }
     }
 
+    static func verbose(_ message: String) {
+        guard UserDefaults.standard.bool(forKey: "Settings.enableDiagnosticLogging") else { return }
+        log(message)
+    }
+
     private static func timestamp() -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -121,7 +121,7 @@ final class LayoutApplicationController {
                 return .failed("Item cannot be hidden")
             }
 
-            let target = singleMoveTarget(uid: uid, section: targetSection, desiredOrder: desired)
+            let target = singleMoveTarget(uid: uid, section: targetSection, desiredOrder: desired, cache: manageableCache)
             guard let destination = MoveDestinationResolver().resolve(
                 target: target,
                 cache: manageableCache,
@@ -400,11 +400,50 @@ final class LayoutApplicationController {
         return order
     }
 
-    private func singleMoveTarget(uid: String, section: MenuBarSection, desiredOrder: SectionOrder) -> LayoutTarget {
+    private func singleMoveTarget(
+        uid: String,
+        section: MenuBarSection,
+        desiredOrder: SectionOrder,
+        cache: ItemCache
+    ) -> LayoutTarget {
         guard let index = desiredOrder[section].firstIndex(of: uid), index > desiredOrder[section].startIndex else {
             return .sectionBoundary(section)
         }
+
+        if section == .visible,
+           let terminalSystemAnchor = terminalSystemAnchorBeforeEnd(uid: uid, desiredOrder: desiredOrder, cache: cache) {
+            return .leftOfUID(terminalSystemAnchor)
+        }
+
         return .rightOfUID(desiredOrder[section][desiredOrder[section].index(before: index)])
+    }
+
+    private func terminalSystemAnchorBeforeEnd(
+        uid: String,
+        desiredOrder: SectionOrder,
+        cache: ItemCache
+    ) -> String? {
+        var visible = desiredOrder.visible
+        guard let insertionIndex = visible.firstIndex(of: uid),
+              insertionIndex == visible.index(before: visible.endIndex) else {
+            return nil
+        }
+
+        visible.remove(at: insertionIndex)
+        guard !visible.isEmpty else { return nil }
+
+        var suffixStart = visible.endIndex
+        while suffixStart > visible.startIndex {
+            let previousIndex = visible.index(before: suffixStart)
+            guard let item = cache.item(withStableIdentifier: visible[previousIndex]),
+                  !item.canBeHidden else {
+                break
+            }
+            suffixStart = previousIndex
+        }
+
+        guard suffixStart < visible.endIndex else { return nil }
+        return visible[suffixStart]
     }
 
     private func layoutPreference() -> LayoutPreference {

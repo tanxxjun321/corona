@@ -175,6 +175,10 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     func refresh() {
+        refresh(showLoading: true)
+    }
+
+    private func refresh(showLoading: Bool) {
         let snapshot = permissionChecker.snapshot()
         canRunCoreFeatures = snapshot.canRunCoreFeatures
         statusMessage = snapshot.canRunCoreFeatures ? nil : "Accessibility permission is required before Corona can scan or move menu bar items."
@@ -184,7 +188,9 @@ final class MainPanelViewModel: ObservableObject {
             return
         }
 
-        isLoading = true
+        if showLoading {
+            isLoading = true
+        }
         errorMessage = nil
         Task {
             do {
@@ -219,7 +225,9 @@ final class MainPanelViewModel: ObservableObject {
                 errorMessage = String(describing: error)
             }
             visualCacheCleanup()
-            isLoading = false
+            if showLoading {
+                isLoading = false
+            }
         }
     }
 
@@ -350,7 +358,7 @@ final class MainPanelViewModel: ObservableObject {
             isApplying = false
             if result.isSuccessfulApply {
                 statusMessage = result.statusTitle
-                refresh()
+                refresh(showLoading: false)
             } else {
                 statusMessage = hasManualPlacementMismatches(in: orderForStatus)
                     ? "\(result.statusTitle). Some icons still need placement."
@@ -696,7 +704,7 @@ private struct MenuBarPreview: View {
     @ObservedObject var model: MainPanelViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 24) {
             PreviewSection(
                 title: "Shown menu bar items",
                 section: .visible,
@@ -765,9 +773,9 @@ private struct PreviewSection: View {
                             }
                             Spacer(minLength: 0)
                         }
-                        .frame(minWidth: geometry.size.width - 32, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
+                        .frame(minWidth: geometry.size.width - 16, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                     }
                     .scrollIndicators(.visible)
                 }
@@ -780,7 +788,7 @@ private struct PreviewSection: View {
                     )
                 )
             }
-            .frame(height: 50)
+            .frame(height: 38)
         }
     }
 }
@@ -881,8 +889,8 @@ private struct InsertDropZone: View {
     var body: some View {
         Rectangle()
             .fill(isTargeted ? Color.accentColor.opacity(0.9) : Color.clear)
-            .frame(width: 14, height: 34)
-            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .frame(width: isTargeted ? 8 : 4, height: 26)
+            .clipShape(RoundedRectangle(cornerRadius: 2))
             .onDrop(
                 of: [UTType.plainText],
                 isTargeted: $isTargeted,
@@ -911,14 +919,14 @@ private struct InsertDropZone: View {
 private struct NewItemsMarkerView: View {
     var body: some View {
         Text("New menu bar items appear here")
-            .font(.body.weight(.semibold))
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(Color.purple.opacity(0.86))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-            .padding(.horizontal, 5)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 2)
             .onDrag {
                 MenuBarDragPayload.newItemsMarkerProvider()
             }
@@ -943,9 +951,9 @@ private struct PreviewChip: View {
             Image(nsImage: row.thumbnail)
                 .resizable()
                 .scaledToFit()
-                .frame(width: row.visualWidth, height: 28)
+                .frame(width: row.visualWidth, height: 24)
                 .foregroundStyle(row.isMovable ? .primary : .secondary)
-                .shadow(color: .black.opacity(0.28), radius: 2, x: 0, y: 1)
+                .shadow(color: .black.opacity(0.22), radius: 1.5, x: 0, y: 1)
             if !row.isMovable || row.needsManualPlacement {
                 Image(systemName: !row.isMovable ? "lock.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 9, weight: .semibold))
@@ -954,7 +962,7 @@ private struct PreviewChip: View {
                     .offset(x: 5, y: -5)
             }
         }
-        .frame(width: row.visualWidth + 8, height: 32)
+        .frame(width: row.visualWidth, height: 26)
         .contentShape(Rectangle())
         .background(isSelected ? Color.white.opacity(0.26) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
