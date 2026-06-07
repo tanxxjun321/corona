@@ -13,6 +13,8 @@ final class MenuBarController {
     private var scanResultsWindowController: ScanResultsWindowController?
     private var layoutEditorWindowController: LayoutEditorWindowController?
     private var hiddenItemsPanelWindowController: HiddenItemsPanelWindowController?
+    private var layoutApplicationController: LayoutApplicationController?
+    private var lastLayoutApplicationResult: LayoutApplicationResult?
 
     init(
         settingsStore: SettingsStore,
@@ -75,6 +77,21 @@ final class MenuBarController {
         layout.target = self
         layout.isEnabled = snapshot.canRunCoreFeatures
         menu.addItem(layout)
+
+        let applyLayout = NSMenuItem(
+            title: "Apply Saved Layout",
+            action: #selector(applySavedLayout),
+            keyEquivalent: ""
+        )
+        applyLayout.target = self
+        applyLayout.isEnabled = snapshot.canRunCoreFeatures
+        menu.addItem(applyLayout)
+
+        if let lastLayoutApplicationResult {
+            let applyStatus = NSMenuItem(title: lastLayoutApplicationResult.statusTitle, action: nil, keyEquivalent: "")
+            applyStatus.isEnabled = false
+            menu.addItem(applyStatus)
+        }
 
         let scan = NSMenuItem(
             title: "Scan Menu Bar Items...",
@@ -188,6 +205,31 @@ final class MenuBarController {
             scanResultsWindowController = ScanResultsWindowController(cacheController: cacheController)
         }
         scanResultsWindowController?.show()
+    }
+
+    @objc private func applySavedLayout() {
+        if layoutApplicationController == nil {
+            layoutApplicationController = LayoutApplicationController(
+                cacheController: cacheController,
+                layoutStore: layoutStore,
+                settingsStore: settingsStore,
+                boundaryProvider: { [weak self] in
+                    self?.sectionController.currentBoundary()
+                },
+                boundaryItemsProvider: { [weak self] in
+                    self?.sectionController.boundaryItems() ?? [:]
+                }
+            )
+        }
+
+        Task { [weak self] in
+            guard let self, let layoutApplicationController else { return }
+            let result = await layoutApplicationController.applyNextStep()
+            await MainActor.run {
+                self.lastLayoutApplicationResult = result
+                self.rebuildMenu()
+            }
+        }
     }
 
     @objc private func openSettings() {
