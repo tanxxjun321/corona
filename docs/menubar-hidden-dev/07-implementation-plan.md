@@ -14,6 +14,24 @@
 
 ## 分阶段开发顺序
 
+## 当前实现状态
+
+截至 2026-06-07，工程已经从控制台程序推进为可打包的菜单栏 app：
+
+- 已完成菜单栏 app 外壳、权限状态、设置窗口、扫描窗口、布局编辑器、隐藏项面板。
+- 已完成菜单栏项模型、稳定身份、缓存控制器、公开 API fallback 扫描、分区分类和布局持久化。
+- 已完成 hidden/always-hidden 控制项、隐藏区 show/hide、宽屏 spacer、基于控制项 bounds 的当前布局分类。
+- 已完成保存布局的应用编排、菜单手动应用、启动后自动恢复、Hidden Panel 单项 reveal。
+- 已接入 direct 版 `Command + drag` 合成事件执行器；当前实现可执行移动，但仍缺少完整的输入暂停、光标恢复、bounds 轮询校验和复杂失败清理。
+- 已通过 SwiftPM 单元测试和 Xcode app 打包验证；真实菜单栏移动仍需要手工验收。
+
+剩余正式化工作：
+
+- 强化 `DirectMoveEventExecutor`：事件串行化、用户输入暂停检测、光标保存/恢复、最终相对位置校验。
+- 完成临时 reveal 后的自动重隐藏、pending return destination 和 click executor。
+- 补多显示器、刘海屏、blocked item 恢复和诊断导出。
+- 补 Screen Recording 缩略图增强和发布签名/notarization 配置。
+
 ### P0：菜单栏外壳与权限门禁
 
 目标：应用能作为菜单栏工具启动，显示主状态项、设置入口、权限状态和诊断开关。
