@@ -12,6 +12,7 @@ final class MenuBarController {
     private var settingsWindowController: SettingsWindowController?
     private var scanResultsWindowController: ScanResultsWindowController?
     private var layoutEditorWindowController: LayoutEditorWindowController?
+    private var hiddenItemsPanelWindowController: HiddenItemsPanelWindowController?
 
     init(
         settingsStore: SettingsStore,
@@ -56,6 +57,15 @@ final class MenuBarController {
         toggleHidden.target = self
         toggleHidden.isEnabled = snapshot.canRunCoreFeatures
         menu.addItem(toggleHidden)
+
+        let hiddenPanel = NSMenuItem(
+            title: "Open Hidden Panel...",
+            action: #selector(openHiddenPanel),
+            keyEquivalent: ""
+        )
+        hiddenPanel.target = self
+        hiddenPanel.isEnabled = snapshot.canRunCoreFeatures
+        menu.addItem(hiddenPanel)
 
         let layout = NSMenuItem(
             title: "Open Layout Editor...",
@@ -158,6 +168,16 @@ final class MenuBarController {
             )
         }
         layoutEditorWindowController?.show()
+    }
+
+    @objc private func openHiddenPanel() {
+        if hiddenItemsPanelWindowController == nil {
+            hiddenItemsPanelWindowController = HiddenItemsPanelWindowController(
+                provider: discoveryProvider,
+                layoutStore: layoutStore
+            )
+        }
+        hiddenItemsPanelWindowController?.show()
     }
 
     @objc private func openScanResults() {
