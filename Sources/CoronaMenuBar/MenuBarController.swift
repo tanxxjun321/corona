@@ -164,7 +164,10 @@ final class MenuBarController {
             layoutEditorWindowController = LayoutEditorWindowController(
                 cacheController: cacheController,
                 layoutStore: layoutStore,
-                settingsStore: settingsStore
+                settingsStore: settingsStore,
+                boundaryProvider: { [weak self] in
+                    self?.sectionController.currentBoundary()
+                }
             )
         }
         layoutEditorWindowController?.show()

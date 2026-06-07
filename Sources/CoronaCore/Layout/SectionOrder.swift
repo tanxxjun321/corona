@@ -15,6 +15,16 @@ public struct SectionOrder: Codable, Equatable, Sendable {
         self.alwaysHidden = alwaysHidden
     }
 
+    public init(cache: ItemCache) {
+        self.visible = cache.visibleItems.map(\.tag.stableIdentifier)
+        self.hidden = cache.hiddenItems.map(\.tag.stableIdentifier)
+        self.alwaysHidden = cache.alwaysHiddenItems.map(\.tag.stableIdentifier)
+    }
+
+    public var isEmpty: Bool {
+        visible.isEmpty && hidden.isEmpty && alwaysHidden.isEmpty
+    }
+
     public subscript(section: MenuBarSection) -> [String] {
         get {
             switch section {

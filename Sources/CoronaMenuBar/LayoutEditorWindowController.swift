@@ -8,12 +8,14 @@ final class LayoutEditorWindowController: NSWindowController {
     init(
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
-        settingsStore: SettingsStore
+        settingsStore: SettingsStore,
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?
     ) {
         self.model = LayoutEditorViewModel(
             cacheController: cacheController,
             layoutStore: layoutStore,
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            boundaryProvider: boundaryProvider
         )
         let hostingController = NSHostingController(rootView: LayoutEditorView(model: model))
         let window = NSWindow(contentViewController: hostingController)
@@ -58,17 +60,20 @@ final class LayoutEditorViewModel: ObservableObject {
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private let settingsStore: SettingsStore
+    private let boundaryProvider: @MainActor () -> SectionBoundary?
     private var itemByUID: [String: MenuBarItem] = [:]
     private var draft = LayoutDraft()
 
     init(
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
-        settingsStore: SettingsStore
+        settingsStore: SettingsStore,
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?
     ) {
         self.cacheController = cacheController
         self.layoutStore = layoutStore
         self.settingsStore = settingsStore
+        self.boundaryProvider = boundaryProvider
     }
 
     func refresh() {
@@ -76,20 +81,11 @@ final class LayoutEditorViewModel: ObservableObject {
         errorMessage = nil
         Task {
             do {
-                let snapshot = try await cacheController.refresh()
-                let cache = ItemCache(
-                    displayID: snapshot.displayID,
-                    visibleItems: snapshot.items,
-                    hiddenItems: [],
-                    alwaysHiddenItems: []
-                )
-                itemByUID = Dictionary(uniqueKeysWithValues: snapshot.items.map { item in
+                let cache = try await currentCache()
+                itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
                     (item.tag.stableIdentifier, item)
                 })
-                draft = LayoutDraft(order: LayoutPlanner().mergedOrder(
-                    cache: cache,
-                    preference: layoutPreference()
-                ))
+                draft = LayoutDraft(order: preferredOrder(cache: cache))
                 rebuildRows()
                 hasUnsavedChanges = false
             } catch {
@@ -136,6 +132,32 @@ final class LayoutEditorViewModel: ObservableObject {
             newItemsSection: MenuBarSection(settings.newItemsSection),
             newItemsPlacement: .append,
             alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
+        )
+    }
+
+    private func currentCache() async throws -> ItemCache {
+        if let boundary = boundaryProvider() {
+            return try await cacheController.cache(boundary: boundary)
+        }
+
+        let snapshot = try await cacheController.refresh()
+        return ItemCache(
+            displayID: snapshot.displayID,
+            visibleItems: snapshot.items,
+            hiddenItems: [],
+            alwaysHiddenItems: []
+        )
+    }
+
+    private func preferredOrder(cache: ItemCache) -> SectionOrder {
+        let savedOrder = layoutStore.loadSavedSectionOrder()
+        guard !savedOrder.isEmpty else {
+            return SectionOrder(cache: cache)
+        }
+
+        return LayoutPlanner().mergedOrder(
+            cache: cache,
+            preference: layoutPreference()
         )
     }
 
