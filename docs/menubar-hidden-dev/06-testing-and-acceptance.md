@@ -23,11 +23,13 @@ pending：
 - wait-for-relaunch 同 windowID 跳过。
 - wait-for-relaunch 新 windowID 后恢复。
 - pending return destination 主邻居、备用邻居、分区边界 fallback。
+- saved layout 前优先处理 pending relocation。
 
 权限：
 
 - 无 Accessibility 时核心 executor 不启动。
 - 无 Screen Recording 时 image provider 返回 bundle icon/占位图。
+- 有 Screen Recording 且开启预览时，隐藏列表和扫描列表显示真实缩略图。
 
 ## 集成测试
 
@@ -49,11 +51,11 @@ P3：
 - 不可移动系统项被跳过。
 - move 失败后光标位置恢复。
 - move 失败后 HID monitors 恢复。
+- move 后刷新 cache 并校验 left/right 最终相对位置。
 
 P4：
 
-- 临时展示隐藏项后能点击打开菜单。
-- 菜单打开期间不会重隐藏。
+- 临时展示隐藏项后按 timer 自动重隐藏。
 - 应用退出后 pending relocation 保留。
 - 应用重启后图标回到原分区。
 
@@ -69,21 +71,25 @@ P5：
 权限：
 
 - 首次启动无 Accessibility。
-- 授予 Accessibility 后自动进入可用状态。
+- 授予 Accessibility 后扫描可用。
 - 撤销 Accessibility 后禁用隐藏/移动。
-- 无 Screen Recording 时隐藏区列表仍可展示。
+- 无 Screen Recording 时 Hidden Panel 和 Scan Results 使用 fallback 图标/文字。
+- 授予 Screen Recording 且开启预览后，Hidden Panel 和 Scan Results 显示真实缩略图。
+- 撤销 Screen Recording 后，刷新列表自动降级为 fallback。
 
 布局：
 
 - 用户手动 Command 拖拽菜单栏项后，应用刷新并保存新顺序。
 - 应用重启后恢复 visible/hidden 顺序。
 - 新安装应用菜单栏项按设置进入 hidden。
+- 保存布局后重启，先恢复 pending relocation，再应用 saved layout。
 
 恢复：
 
-- 临时展示后立即切换前台应用，图标能重隐藏。
+- Hidden Panel Reveal 后按 timer 回到隐藏区。
 - 临时展示期间退出源应用，重启后恢复原分区。
 - 连续失败后不会无限重试。
+- 移动失败不会卡住拖拽或鼠标。
 
 多显示器：
 
@@ -123,3 +129,6 @@ App Store 版：
 - 首次启动权限引导完整。
 - 完整隐藏/移动/恢复链路通过手工验收。
 - 诊断导出可用于定位权限、窗口扫描和 move 失败。
+- `make release` 完成 clean、test、release build、Developer ID signing、zip、notarization、staple 和 verify。
+- `codesign --verify --deep --strict` 通过。
+- `spctl --assess --type execute` 通过。

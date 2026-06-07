@@ -1,6 +1,7 @@
 import AppKit
 import CoronaCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class HiddenItemsPanelWindowController: NSWindowController {
     private let model: HiddenItemsPanelViewModel
@@ -8,11 +9,13 @@ final class HiddenItemsPanelWindowController: NSWindowController {
     init(
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
+        thumbnailProvider: MenuBarThumbnailProviding,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.model = HiddenItemsPanelViewModel(
             cacheController: cacheController,
             layoutStore: layoutStore,
+            thumbnailProvider: thumbnailProvider,
             revealHandler: revealHandler
         )
         let hostingController = NSHostingController(rootView: HiddenItemsPanelView(model: model))
@@ -40,13 +43,14 @@ final class HiddenItemsPanelWindowController: NSWindowController {
 
 @MainActor
 final class HiddenItemsPanelViewModel: ObservableObject {
-    struct Row: Identifiable, Equatable {
+    struct Row: Identifiable {
         var id: String { uid }
         var uid: String
         var title: String
         var owner: String
         var section: MenuBarSection
         var isAvailable: Bool
+        var thumbnail: NSImage
     }
 
     @Published private(set) var rows: [Row] = []
@@ -57,15 +61,18 @@ final class HiddenItemsPanelViewModel: ObservableObject {
 
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
+    private let thumbnailProvider: MenuBarThumbnailProviding
     private let revealHandler: @MainActor (String) async -> LayoutApplicationResult
 
     init(
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
+        thumbnailProvider: MenuBarThumbnailProviding,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.cacheController = cacheController
         self.layoutStore = layoutStore
+        self.thumbnailProvider = thumbnailProvider
         self.revealHandler = revealHandler
     }
 
@@ -106,14 +113,23 @@ final class HiddenItemsPanelViewModel: ObservableObject {
     ) -> [Row] {
         uids.map { uid in
             guard let item = itemByUID[uid] else {
-                return Row(uid: uid, title: uid, owner: "Unavailable", section: section, isAvailable: false)
+                return Row(
+                    uid: uid,
+                    title: uid,
+                    owner: "Unavailable",
+                    section: section,
+                    isAvailable: false,
+                    thumbnail: NSImage(systemSymbolName: "questionmark.app.dashed", accessibilityDescription: uid)
+                        ?? NSWorkspace.shared.icon(for: .applicationBundle)
+                )
             }
             return Row(
                 uid: uid,
                 title: item.title ?? item.tag.title,
                 owner: item.tag.namespace,
                 section: section,
-                isAvailable: true
+                isAvailable: true,
+                thumbnail: thumbnailProvider.thumbnail(for: item)
             )
         }
     }
@@ -173,9 +189,11 @@ struct HiddenItemsPanelView: View {
 
                 List(model.rows) { row in
                     HStack(spacing: 10) {
-                        Image(systemName: row.isAvailable ? "app.dashed" : "questionmark.app.dashed")
+                        Image(nsImage: row.thumbnail)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
                             .foregroundStyle(.secondary)
-                            .frame(width: 20)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(row.title)
                                 .lineLimit(1)

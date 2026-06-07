@@ -22,4 +22,13 @@ final class SectionOrderTests: XCTestCase {
         XCTAssertFalse(SectionOrder(hidden: ["a"]).isEmpty)
         XCTAssertFalse(SectionOrder(alwaysHidden: ["a"]).isEmpty)
     }
+
+    func testFindsContainingSection() {
+        let order = SectionOrder(visible: ["a"], hidden: ["b"], alwaysHidden: ["c"])
+
+        XCTAssertEqual(order.section(containing: "a"), .visible)
+        XCTAssertEqual(order.section(containing: "b"), .hidden)
+        XCTAssertEqual(order.section(containing: "c"), .alwaysHidden)
+        XCTAssertNil(order.section(containing: "missing"))
+    }
 }

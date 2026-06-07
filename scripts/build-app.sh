@@ -2,32 +2,47 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIGURATION="${CONFIGURATION:-debug}"
+CONFIGURATION="${CONFIGURATION:-Debug}"
 APP_NAME="Corona"
-EXECUTABLE_NAME="CoronaMenuBar"
-BUILD_DIR="$ROOT_DIR/.build/arm64-apple-macosx/$CONFIGURATION"
+XCODE_CONFIGURATION="$CONFIGURATION"
+PACKAGE_CONFIGURATION="debug"
 APP_DIR="$ROOT_DIR/.build/app/$APP_NAME.app"
-CONTENTS_DIR="$APP_DIR/Contents"
-MACOS_DIR="$CONTENTS_DIR/MacOS"
-RESOURCES_DIR="$CONTENTS_DIR/Resources"
-MODULE_CACHE_DIR="$ROOT_DIR/.build/module-cache"
+DIST_DIR="$ROOT_DIR/.build/dist"
+XCODE_BUILD_DIR="$ROOT_DIR/build"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+
+case "$CONFIGURATION" in
+  debug) XCODE_CONFIGURATION="Debug" ;;
+  release) XCODE_CONFIGURATION="Release"; PACKAGE_CONFIGURATION="release" ;;
+  Release) PACKAGE_CONFIGURATION="release" ;;
+esac
 
 cd "$ROOT_DIR"
-mkdir -p "$MODULE_CACHE_DIR"
-export CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR"
-swift build \
-  --configuration "$CONFIGURATION" \
-  --product "$EXECUTABLE_NAME" \
-  -Xcc -fmodules-cache-path="$MODULE_CACHE_DIR"
+
+XCODE_ARGS=(
+  -project Corona.xcodeproj
+  -target CoronaApp
+  -configuration "$XCODE_CONFIGURATION"
+  BUILD_DIR="$XCODE_BUILD_DIR"
+  SYMROOT="$XCODE_BUILD_DIR"
+)
+
+if [[ "$XCODE_CONFIGURATION" == "Release" ]]; then
+  if [[ -z "$SIGN_IDENTITY" ]]; then
+    SIGN_IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
+  fi
+  if [[ -z "$SIGN_IDENTITY" ]]; then
+    echo "Release signing requires SIGN_IDENTITY or DEVELOPER_ID_APPLICATION." >&2
+    exit 1
+  fi
+  XCODE_ARGS+=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY")
+fi
+
+xcodebuild "${XCODE_ARGS[@]}" build
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
-
-cp "$BUILD_DIR/$EXECUTABLE_NAME" "$MACOS_DIR/$EXECUTABLE_NAME"
-cp "$ROOT_DIR/App/Info.plist" "$CONTENTS_DIR/Info.plist"
-
-if command -v codesign >/dev/null 2>&1; then
-  codesign --force --sign - --entitlements "$ROOT_DIR/App/Corona.entitlements" "$APP_DIR" >/dev/null
-fi
+mkdir -p "$(dirname "$APP_DIR")" "$DIST_DIR"
+ditto "$XCODE_BUILD_DIR/$XCODE_CONFIGURATION/$APP_NAME.app" "$APP_DIR"
+ditto -c -k --keepParent "$APP_DIR" "$DIST_DIR/$APP_NAME-$PACKAGE_CONFIGURATION.zip"
 
 echo "$APP_DIR"

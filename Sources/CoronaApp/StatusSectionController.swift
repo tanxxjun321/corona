@@ -20,10 +20,11 @@ final class StatusSectionController {
     private(set) var alwaysHiddenVisibility: StatusSectionVisibility = .hidden
 
     init() {
-        hiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.hiddenLength)
-        alwaysHiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.hiddenLength)
+        hiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.compactLength)
+        alwaysHiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.compactLength)
         configureControlItem(hiddenControlItem)
         configureControlItem(alwaysHiddenControlItem)
+        apply(visibility: hiddenVisibility, to: hiddenControlItem)
     }
 
     func setHiddenSectionVisible(_ visible: Bool) {

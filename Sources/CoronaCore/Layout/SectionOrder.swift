@@ -47,6 +47,12 @@ public struct SectionOrder: Codable, Equatable, Sendable {
             }
         }
     }
+
+    public func section(containing uid: String) -> MenuBarSection? {
+        MenuBarSection.allCases.first { section in
+            self[section].contains(uid)
+        }
+    }
 }
 
 public enum NewItemsPlacement: Codable, Equatable, Sendable {
@@ -64,7 +70,7 @@ public struct LayoutPreference: Codable, Equatable, Sendable {
 
     public init(
         savedOrder: SectionOrder = SectionOrder(),
-        newItemsSection: MenuBarSection = .hidden,
+        newItemsSection: MenuBarSection = .visible,
         newItemsPlacement: NewItemsPlacement = .append,
         alwaysHiddenEnabled: Bool = false
     ) {

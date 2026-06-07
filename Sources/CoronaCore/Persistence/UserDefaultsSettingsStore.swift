@@ -11,6 +11,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
         static let enableAlwaysHiddenSection = "Settings.enableAlwaysHiddenSection"
         static let enableScreenRecordingPreviews = "Settings.enableScreenRecordingPreviews"
         static let enableDiagnosticLogging = "Settings.enableDiagnosticLogging"
+        static let migratedDefaultNewItemsSection = "Settings.migratedDefaultNewItemsSection.v1"
     }
 
     private let defaults: UserDefaults
@@ -20,6 +21,8 @@ public final class UserDefaultsSettingsStore: SettingsStore {
     }
 
     public func load() -> AppSettings {
+        migrateUnsafeDefaultsIfNeeded()
+
         let defaults = AppSettings()
         return AppSettings(
             launchAtLogin: bool(forKey: Key.launchAtLogin, default: defaults.launchAtLogin),
@@ -63,5 +66,14 @@ public final class UserDefaultsSettingsStore: SettingsStore {
 
     private func string(forKey key: String, default defaultValue: String) -> String {
         defaults.string(forKey: key) ?? defaultValue
+    }
+
+    private func migrateUnsafeDefaultsIfNeeded() {
+        guard defaults.object(forKey: Key.migratedDefaultNewItemsSection) == nil else { return }
+
+        if defaults.string(forKey: Key.newItemsSection) == NewItemsSection.hidden.rawValue {
+            defaults.set(NewItemsSection.visible.rawValue, forKey: Key.newItemsSection)
+        }
+        defaults.set(true, forKey: Key.migratedDefaultNewItemsSection)
     }
 }

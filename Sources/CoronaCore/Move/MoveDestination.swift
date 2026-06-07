@@ -5,6 +5,27 @@ public enum MoveDestination: Codable, Equatable, Sendable {
     case rightOfItem(MenuBarItem)
 }
 
+public extension MoveDestination {
+    func isSatisfied(for itemUID: String, in cache: ItemCache) -> Bool {
+        guard let movedItem = cache.item(withStableIdentifier: itemUID) else {
+            return false
+        }
+
+        switch self {
+        case .leftOfItem(let anchor):
+            guard let currentAnchor = cache.item(withStableIdentifier: anchor.tag.stableIdentifier) else {
+                return false
+            }
+            return movedItem.bounds.midX < currentAnchor.bounds.midX
+        case .rightOfItem(let anchor):
+            guard let currentAnchor = cache.item(withStableIdentifier: anchor.tag.stableIdentifier) else {
+                return false
+            }
+            return movedItem.bounds.midX > currentAnchor.bounds.midX
+        }
+    }
+}
+
 public enum MoveExecutorError: Error, Equatable, Sendable {
     case itemNotMovable(String)
     case sourceProcessUnavailable(String)

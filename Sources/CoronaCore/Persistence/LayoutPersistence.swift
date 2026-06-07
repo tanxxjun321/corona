@@ -5,12 +5,15 @@ public protocol LayoutPersistenceStore {
     func saveSavedSectionOrder(_ order: SectionOrder)
     func loadKnownItemIdentifiers() -> Set<String>
     func saveKnownItemIdentifiers(_ identifiers: Set<String>)
+    func loadPendingRelocations() -> [String: PendingRelocation]
+    func savePendingRelocation(_ relocation: PendingRelocation?, for uid: String)
 }
 
 public final class UserDefaultsLayoutPersistenceStore: LayoutPersistenceStore {
     private enum Key {
         static let savedSectionOrder = "ItemManager.savedSectionOrder.v1"
         static let knownItemIdentifiers = "ItemManager.knownItemIdentifiers"
+        static let pendingRelocations = "ItemManager.pendingRelocations.v1"
     }
 
     private let defaults: UserDefaults
@@ -40,5 +43,20 @@ public final class UserDefaultsLayoutPersistenceStore: LayoutPersistenceStore {
 
     public func saveKnownItemIdentifiers(_ identifiers: Set<String>) {
         defaults.set(Array(identifiers).sorted(), forKey: Key.knownItemIdentifiers)
+    }
+
+    public func loadPendingRelocations() -> [String: PendingRelocation] {
+        let raw = defaults.dictionary(forKey: Key.pendingRelocations) as? [String: String] ?? [:]
+        return raw.reduce(into: [String: PendingRelocation]()) { result, entry in
+            if let relocation = PendingRelocation(rawValue: entry.value) {
+                result[entry.key] = relocation
+            }
+        }
+    }
+
+    public func savePendingRelocation(_ relocation: PendingRelocation?, for uid: String) {
+        var raw = defaults.dictionary(forKey: Key.pendingRelocations) as? [String: String] ?? [:]
+        raw[uid] = relocation?.rawValue
+        defaults.set(raw, forKey: Key.pendingRelocations)
     }
 }

@@ -1,10 +1,13 @@
+import AppKit
 import CoreGraphics
 import CoronaCore
 import Foundation
 
-struct PublicMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
+typealias PublicMenuBarDiscoveryProvider = DirectMenuBarDiscoveryProvider
+
+struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
     var capability: DiscoveryCapability {
-        .appStoreFallback
+        .directFull
     }
 
     func snapshot() async throws -> MenuBarSnapshot {
@@ -15,6 +18,10 @@ struct PublicMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
 
         let menuBarCandidates = rawWindows.compactMap(makeMenuBarItem)
         let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: menuBarCandidates)
+        CoronaDebugLog.log("discovery.snapshot rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) assigned=\(assigned.count)")
+        for item in assigned {
+            CoronaDebugLog.log("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") movable=\(item.isMovable)")
+        }
         return MenuBarSnapshot(displayID: CGMainDisplayID(), items: assigned)
     }
 
@@ -26,15 +33,29 @@ struct PublicMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             return nil
         }
 
+        let ownerName = info[kCGWindowOwnerName as String] as? String
+        let title = (info[kCGWindowName as String] as? String).flatMap { $0.isEmpty ? nil : $0 }
+
+        guard ownerPID != Int32(ProcessInfo.processInfo.processIdentifier) else {
+            return nil
+        }
+        guard ownerName != "Window Server", title != "Menubar" else {
+            return nil
+        }
         guard isLikelyMenuBarWindow(bounds: bounds) else {
             return nil
         }
 
-        let ownerName = info[kCGWindowOwnerName as String] as? String
-        let title = (info[kCGWindowName as String] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let namespace = ownerName ?? "pid.\(ownerPID)"
+        let bundleIdentifier = NSRunningApplication(processIdentifier: ownerPID)?.bundleIdentifier
+        guard bundleIdentifier != Bundle.main.bundleIdentifier else {
+            return nil
+        }
+
+        let namespace = bundleIdentifier ?? ownerName ?? "pid.\(ownerPID)"
         let displayTitle = title ?? ownerName ?? "Status Item"
         let isOnScreen = (info[kCGWindowIsOnscreen as String] as? Bool) ?? true
+
+        let isSystemItem = bundleIdentifier?.hasPrefix("com.apple.") == true
 
         return MenuBarItem(
             tag: MenuBarItemTag(
@@ -49,7 +70,7 @@ struct PublicMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             title: title,
             isOnScreen: isOnScreen,
             isMovable: true,
-            canBeHidden: true
+            canBeHidden: !isSystemItem
         )
     }
 
@@ -58,20 +79,8 @@ struct PublicMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             return false
         }
 
-        let displays = NSScreenFrameProvider.displayFrames()
-        return displays.contains { frame in
-            abs(bounds.minY - frame.minY) <= 2 || abs(bounds.maxY - frame.maxY) <= 2
-        }
-    }
-}
-
-private enum NSScreenFrameProvider {
-    static func displayFrames() -> [CGRect] {
-        CGGetActiveDisplayList(0, nil, nil)
-        var count: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &count)
-        var displays = Array(repeating: CGDirectDisplayID(), count: Int(count))
-        CGGetActiveDisplayList(count, &displays, &count)
-        return displays.map(CGDisplayBounds)
+        let mainDisplayFrame = CGDisplayBounds(CGMainDisplayID())
+        return abs(bounds.minY - mainDisplayFrame.minY) <= 2
+            || abs(bounds.maxY - mainDisplayFrame.maxY) <= 2
     }
 }

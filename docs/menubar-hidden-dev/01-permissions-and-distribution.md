@@ -14,6 +14,34 @@ Accessibility 是产品核心门槛。没有它，不能承诺第三方菜单栏
 
 Screen Recording 只用于读取像素。隐藏区列表本身不需要它；真实像素缩略图需要它。
 
+## 官网发布命令
+
+环境变量：
+
+```bash
+export SIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
+export NOTARY_PROFILE="corona-notary"
+```
+
+发布：
+
+```bash
+make release
+```
+
+单步调试：
+
+```bash
+CONFIGURATION=Release bash scripts/build-app.sh
+bash scripts/notarize-app.sh
+make verify
+```
+
+产物：
+
+- `.build/app/Corona.app`
+- `.build/dist/Corona-release.zip`
+
 ## 双版本策略
 
 App Store 版：
@@ -29,6 +57,7 @@ App Store 版：
 - 保留完整窗口扫描 provider、离屏 bounds、active menu bar display、合成拖拽和截图 provider。
 - 仍然只在用户触发路径下移动图标。
 - 诊断日志默认不采集敏感内容，用户主动导出。
+- 发布机器需要 Apple Developer Program、Developer ID Application 证书和 `notarytool` keychain profile。
 
 共享部分：
 

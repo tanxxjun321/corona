@@ -11,19 +11,11 @@ let package = Package(
         .library(
             name: "CoronaCore",
             targets: ["CoronaCore"]
-        ),
-        .executable(
-            name: "CoronaMenuBar",
-            targets: ["CoronaMenuBar"]
         )
     ],
     targets: [
         .target(
             name: "CoronaCore"
-        ),
-        .executableTarget(
-            name: "CoronaMenuBar",
-            dependencies: ["CoronaCore"]
         ),
         .testTarget(
             name: "CoronaCoreTests",

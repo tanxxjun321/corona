@@ -3,57 +3,170 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1A1000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000101 /* AppDelegate.swift */; };
+		1A1000000000000000000002 /* DirectMoveEventExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000102 /* DirectMoveEventExecutor.swift */; };
+		1A1000000000000000000003 /* HiddenItemsPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */; };
+		1A1000000000000000000004 /* LayoutApplicationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000104 /* LayoutApplicationController.swift */; };
+		1A1000000000000000000005 /* LayoutEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000105 /* LayoutEditorView.swift */; };
+		1A1000000000000000000006 /* LayoutEditorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000106 /* LayoutEditorWindowController.swift */; };
+		1A1000000000000000000007 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000107 /* MenuBarController.swift */; };
+		1A1000000000000000000008 /* MenuBarThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */; };
+		1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */; };
+		1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010A /* ScanResultsWindowController.swift */; };
+		1A100000000000000000000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010B /* SettingsView.swift */; };
+		1A100000000000000000000C /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010C /* SettingsViewModel.swift */; };
+		1A100000000000000000000D /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010D /* SettingsWindowController.swift */; };
+		1A100000000000000000000E /* StatusSectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010E /* StatusSectionController.swift */; };
+		1A100000000000000000000F /* SystemPermissionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010F /* SystemPermissionChecker.swift */; };
+		1A1000000000000000000010 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000110 /* main.swift */; };
+		1A1000000000000000000011 /* Corona.icns in Resources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000111 /* Corona.icns */; };
+		1A1000000000000000000012 /* CoronaCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1A1000000000000000000501 /* CoronaCore */; };
+		1A1000000000000000000013 /* MainPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000116 /* MainPanelWindowController.swift */; };
+		1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000117 /* CoronaDebugLog.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		1A0000010000000000000001 /* Corona */ = {isa = PBXFileReference; lastKnownFileType = folder; path = .; sourceTree = "<group>"; };
+		1A1000000000000000000101 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1A1000000000000000000102 /* DirectMoveEventExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectMoveEventExecutor.swift; sourceTree = "<group>"; };
+		1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenItemsPanelWindowController.swift; sourceTree = "<group>"; };
+		1A1000000000000000000104 /* LayoutApplicationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplicationController.swift; sourceTree = "<group>"; };
+		1A1000000000000000000105 /* LayoutEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutEditorView.swift; sourceTree = "<group>"; };
+		1A1000000000000000000106 /* LayoutEditorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutEditorWindowController.swift; sourceTree = "<group>"; };
+		1A1000000000000000000107 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarThumbnailProvider.swift; sourceTree = "<group>"; };
+		1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicMenuBarDiscoveryProvider.swift; sourceTree = "<group>"; };
+		1A100000000000000000010A /* ScanResultsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResultsWindowController.swift; sourceTree = "<group>"; };
+		1A100000000000000000010B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1A100000000000000000010C /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		1A100000000000000000010D /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
+		1A100000000000000000010E /* StatusSectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusSectionController.swift; sourceTree = "<group>"; };
+		1A100000000000000000010F /* SystemPermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPermissionChecker.swift; sourceTree = "<group>"; };
+		1A1000000000000000000110 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		1A1000000000000000000111 /* Corona.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Corona.icns; sourceTree = "<group>"; };
+		1A1000000000000000000112 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A1000000000000000000113 /* Corona.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Corona.entitlements; sourceTree = "<group>"; };
+		1A1000000000000000000114 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = SOURCE_ROOT; };
+		1A1000000000000000000115 /* Corona.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Corona.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A1000000000000000000116 /* MainPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainPanelWindowController.swift; sourceTree = "<group>"; };
+		1A1000000000000000000117 /* CoronaDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoronaDebugLog.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		1A1000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A1000000000000000000012 /* CoronaCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
-		1A0000010000000000000002 = {
+		1A1000000000000000000301 = {
 			isa = PBXGroup;
 			children = (
-				1A0000010000000000000001 /* Corona */,
-				1A0000010000000000000003 /* Products */,
+				1A1000000000000000000302 /* Sources */,
+				1A1000000000000000000304 /* App */,
+				1A1000000000000000000114 /* Package.swift */,
+				1A1000000000000000000305 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		1A0000010000000000000003 /* Products */ = {
+		1A1000000000000000000302 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				1A1000000000000000000303 /* CoronaApp */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		1A1000000000000000000303 /* CoronaApp */ = {
+			isa = PBXGroup;
+			children = (
+				1A1000000000000000000101 /* AppDelegate.swift */,
+				1A1000000000000000000117 /* CoronaDebugLog.swift */,
+				1A1000000000000000000102 /* DirectMoveEventExecutor.swift */,
+				1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */,
+				1A1000000000000000000104 /* LayoutApplicationController.swift */,
+				1A1000000000000000000105 /* LayoutEditorView.swift */,
+				1A1000000000000000000106 /* LayoutEditorWindowController.swift */,
+				1A1000000000000000000116 /* MainPanelWindowController.swift */,
+				1A1000000000000000000107 /* MenuBarController.swift */,
+				1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */,
+				1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */,
+				1A100000000000000000010A /* ScanResultsWindowController.swift */,
+				1A100000000000000000010B /* SettingsView.swift */,
+				1A100000000000000000010C /* SettingsViewModel.swift */,
+				1A100000000000000000010D /* SettingsWindowController.swift */,
+				1A100000000000000000010E /* StatusSectionController.swift */,
+				1A100000000000000000010F /* SystemPermissionChecker.swift */,
+				1A1000000000000000000110 /* main.swift */,
+			);
+			path = CoronaApp;
+			sourceTree = "<group>";
+		};
+		1A1000000000000000000304 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				1A1000000000000000000111 /* Corona.icns */,
+				1A1000000000000000000113 /* Corona.entitlements */,
+				1A1000000000000000000112 /* Info.plist */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		1A1000000000000000000305 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A1000000000000000000115 /* Corona.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
-/* Begin PBXLegacyTarget section */
-		1A0000010000000000000004 /* CoronaApp */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = scripts/build-app.sh;
-			buildConfigurationList = 1A0000010000000000000005 /* Build configuration list for PBXLegacyTarget "CoronaApp" */;
+/* Begin PBXNativeTarget section */
+		1A1000000000000000000401 /* CoronaApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A1000000000000000000701 /* Build configuration list for PBXNativeTarget "CoronaApp" */;
 			buildPhases = (
+				1A1000000000000000000202 /* Sources */,
+				1A1000000000000000000201 /* Frameworks */,
+				1A1000000000000000000203 /* Resources */,
 			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "";
+			buildRules = (
+			);
 			dependencies = (
 			);
 			name = CoronaApp;
-			passBuildSettingsInEnvironment = 1;
-			productName = CoronaApp;
+			packageProductDependencies = (
+				1A1000000000000000000501 /* CoronaCore */,
+			);
+			productName = Corona;
+			productReference = 1A1000000000000000000115 /* Corona.app */;
+			productType = "com.apple.product-type.application";
 		};
-/* End PBXLegacyTarget section */
+/* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		1A0000010000000000000006 /* Project object */ = {
+		1A1000000000000000000601 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					1A1000000000000000000401 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+				};
 			};
-			buildConfigurationList = 1A0000010000000000000007 /* Build configuration list for PBXProject "Corona" */;
+			buildConfigurationList = 1A1000000000000000000702 /* Build configuration list for PBXProject "Corona" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -61,71 +174,165 @@
 				en,
 				Base,
 			);
-			mainGroup = 1A0000010000000000000002;
-			productRefGroup = 1A0000010000000000000003 /* Products */;
+			mainGroup = 1A1000000000000000000301;
+			packageReferences = (
+				1A1000000000000000000502 /* XCLocalSwiftPackageReference "." */,
+			);
+			productRefGroup = 1A1000000000000000000305 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1A0000010000000000000004 /* CoronaApp */,
+				1A1000000000000000000401 /* CoronaApp */,
 			);
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		1A1000000000000000000203 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A1000000000000000000011 /* Corona.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A1000000000000000000202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A1000000000000000000001 /* AppDelegate.swift in Sources */,
+				1A1000000000000000000002 /* DirectMoveEventExecutor.swift in Sources */,
+				1A1000000000000000000003 /* HiddenItemsPanelWindowController.swift in Sources */,
+				1A1000000000000000000004 /* LayoutApplicationController.swift in Sources */,
+				1A1000000000000000000005 /* LayoutEditorView.swift in Sources */,
+				1A1000000000000000000006 /* LayoutEditorWindowController.swift in Sources */,
+				1A1000000000000000000013 /* MainPanelWindowController.swift in Sources */,
+				1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */,
+				1A1000000000000000000007 /* MenuBarController.swift in Sources */,
+				1A1000000000000000000008 /* MenuBarThumbnailProvider.swift in Sources */,
+				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
+				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
+				1A100000000000000000000B /* SettingsView.swift in Sources */,
+				1A100000000000000000000C /* SettingsViewModel.swift in Sources */,
+				1A100000000000000000000D /* SettingsWindowController.swift in Sources */,
+				1A100000000000000000000E /* StatusSectionController.swift in Sources */,
+				1A100000000000000000000F /* SystemPermissionChecker.swift in Sources */,
+				1A1000000000000000000010 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
 /* Begin XCBuildConfiguration section */
-		1A0000010000000000000008 /* Debug */ = {
+		1A1000000000000000000801 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CONFIGURATION = debug;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_ENTITLEMENTS = App/Corona.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 5DF5Z5B263;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ltz.corona;
 				PRODUCT_NAME = Corona;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-		1A0000010000000000000009 /* Release */ = {
+		1A1000000000000000000802 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CONFIGURATION = release;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_ENTITLEMENTS = App/Corona.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ltz.corona;
 				PRODUCT_NAME = Corona;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
-		1A000001000000000000000A /* Debug */ = {
+		1A1000000000000000000803 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CONFIGURATION = debug;
-				PRODUCT_NAME = Corona;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-		1A000001000000000000000B /* Release */ = {
+		1A1000000000000000000804 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CONFIGURATION = release;
-				PRODUCT_NAME = Corona;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1A0000010000000000000005 /* Build configuration list for PBXLegacyTarget "CoronaApp" */ = {
+		1A1000000000000000000701 /* Build configuration list for PBXNativeTarget "CoronaApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1A000001000000000000000A /* Debug */,
-				1A000001000000000000000B /* Release */,
+				1A1000000000000000000801 /* Debug */,
+				1A1000000000000000000802 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		1A0000010000000000000007 /* Build configuration list for PBXProject "Corona" */ = {
+		1A1000000000000000000702 /* Build configuration list for PBXProject "Corona" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1A0000010000000000000008 /* Debug */,
-				1A0000010000000000000009 /* Release */,
+				1A1000000000000000000803 /* Debug */,
+				1A1000000000000000000804 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		1A1000000000000000000502 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1A1000000000000000000501 /* CoronaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1A1000000000000000000502 /* XCLocalSwiftPackageReference "." */;
+			productName = CoronaCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 1A0000010000000000000006 /* Project object */;
+	rootObject = 1A1000000000000000000601 /* Project object */;
 }

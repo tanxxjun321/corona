@@ -27,9 +27,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         launchAtLogin: Bool = false,
         showMainIcon: Bool = true,
         autoRehide: Bool = true,
-        rehideStrategy: RehideStrategy = .smart,
+        rehideStrategy: RehideStrategy = .timer,
         rehideInterval: TimeInterval = 8,
-        newItemsSection: NewItemsSection = .hidden,
+        newItemsSection: NewItemsSection = .visible,
         enableAlwaysHiddenSection: Bool = false,
         enableScreenRecordingPreviews: Bool = false,
         enableDiagnosticLogging: Bool = false

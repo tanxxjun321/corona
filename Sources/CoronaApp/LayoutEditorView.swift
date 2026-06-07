@@ -22,6 +22,12 @@ struct LayoutEditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if let applyMessage = model.applyMessage {
+                Text(applyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Spacer()
             Button {
                 model.refresh()
@@ -34,11 +40,15 @@ struct LayoutEditorView: View {
                 model.resetToDetectedOrder()
             }
 
-            Button("Save") {
-                model.save()
+            Button("Save + Apply") {
+                model.saveAndApply()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!model.hasUnsavedChanges)
+            .disabled(model.isApplying)
+            if model.isApplying {
+                ProgressView()
+                    .controlSize(.small)
+            }
         }
         .padding(16)
     }

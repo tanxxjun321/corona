@@ -4,10 +4,10 @@
 
 - 语言与 UI：Swift 5.9+，AppKit 负责菜单栏生命周期，SwiftUI 负责设置和权限窗口。
 - 最低系统版本：macOS 13。后续如果 ScreenCaptureKit 或新版 System Settings 跳转需要更高版本，再按功能做可用性判断。
-- 仓库结构：先使用 Swift Package 搭建可编译核心和菜单栏 executable；需要正式分发时再补 Xcode app target、Info.plist、entitlements 和签名配置。
+- 仓库结构：Swift Package 只保留 `CoronaCore` 核心库和测试；Xcode 原生 `CoronaApp` 是唯一可运行 app target。
 - 模块边界：
   - `CoronaCore`：权限模型、设置模型、菜单栏 item 模型、布局纯函数、持久化 schema。
-  - `CoronaMenuBar`：`NSApplication` 生命周期、`NSStatusItem`、设置窗口、系统权限跳转、后续 provider/executor 装配。
+  - `CoronaApp`：`NSApplication` 生命周期、`NSStatusItem`、设置窗口、系统权限跳转、provider/executor 装配。
   - `CoronaCoreTests`：不依赖系统 UI 的单元测试。
 - 版本差异：使用 `DistributionChannel` 表达 `appStore` 和 `direct`，provider capability 由运行时对象声明，不在业务层判断私有 API。
 - P0 阶段不实现 Window Server 扫描和合成拖拽，只建立权限门禁、UI 外壳、设置持久化和后续装配点。
@@ -38,7 +38,7 @@
 
 开发步骤：
 
-1. 创建 Swift Package、核心库、菜单栏 executable 和测试 target。
+1. 创建 Swift Package 核心库、Xcode app target 和测试 target。
 2. 实现 `PermissionStatus`、`PermissionSnapshot`、`PermissionChecking`。
 3. 在 app 层实现 Accessibility 和 Screen Recording 检测。
 4. 实现 `AppSettings` 与 `UserDefaultsSettingsStore`。
@@ -49,7 +49,7 @@
 验收：
 
 - `swift test` 通过。
-- `swift run CoronaMenuBar` 能启动菜单栏 app。
+- Xcode 运行 `CoronaApp` 能启动菜单栏 app。
 - 无 Accessibility 时菜单和设置页清楚显示核心功能不可用。
 - Screen Recording 缺失只显示增强功能未启用，不阻塞设置页。
 

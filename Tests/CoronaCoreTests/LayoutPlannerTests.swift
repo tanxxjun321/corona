@@ -2,6 +2,20 @@ import CoronaCore
 import XCTest
 
 final class LayoutPlannerTests: XCTestCase {
+    func testDefaultPreferenceAppendsNewItemsToVisible() {
+        let cache = ItemCache(
+            displayID: nil,
+            visibleItems: [makeItem(windowID: 1, namespace: "app", title: "New", sourcePID: 10)],
+            hiddenItems: [],
+            alwaysHiddenItems: []
+        )
+
+        let order = LayoutPlanner().mergedOrder(cache: cache, preference: LayoutPreference())
+
+        XCTAssertEqual(order.visible, ["app:New"])
+        XCTAssertEqual(order.hidden, [])
+    }
+
     func testMergedOrderAppendsNewItemsToConfiguredSection() {
         let cache = ItemCache(
             displayID: nil,

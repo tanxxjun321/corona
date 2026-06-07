@@ -9,13 +9,15 @@ final class LayoutEditorWindowController: NSWindowController {
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         settingsStore: SettingsStore,
-        boundaryProvider: @escaping @MainActor () -> SectionBoundary?
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
+        applyHandler: @escaping @MainActor () async -> LayoutApplicationResult
     ) {
         self.model = LayoutEditorViewModel(
             cacheController: cacheController,
             layoutStore: layoutStore,
             settingsStore: settingsStore,
-            boundaryProvider: boundaryProvider
+            boundaryProvider: boundaryProvider,
+            applyHandler: applyHandler
         )
         let hostingController = NSHostingController(rootView: LayoutEditorView(model: model))
         let window = NSWindow(contentViewController: hostingController)
@@ -56,11 +58,14 @@ final class LayoutEditorViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var hasUnsavedChanges = false
+    @Published private(set) var isApplying = false
+    @Published private(set) var applyMessage: String?
 
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private let settingsStore: SettingsStore
     private let boundaryProvider: @MainActor () -> SectionBoundary?
+    private let applyHandler: @MainActor () async -> LayoutApplicationResult
     private var itemByUID: [String: MenuBarItem] = [:]
     private var draft = LayoutDraft()
 
@@ -68,12 +73,14 @@ final class LayoutEditorViewModel: ObservableObject {
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         settingsStore: SettingsStore,
-        boundaryProvider: @escaping @MainActor () -> SectionBoundary?
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
+        applyHandler: @escaping @MainActor () async -> LayoutApplicationResult
     ) {
         self.cacheController = cacheController
         self.layoutStore = layoutStore
         self.settingsStore = settingsStore
         self.boundaryProvider = boundaryProvider
+        self.applyHandler = applyHandler
     }
 
     func refresh() {
@@ -82,10 +89,13 @@ final class LayoutEditorViewModel: ObservableObject {
         Task {
             do {
                 let cache = try await currentCache()
-                itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
+                let editableItems = cache.allItems.filter { item in
+                    !Self.isCoronaSelfItem(item)
+                }
+                itemByUID = Dictionary(uniqueKeysWithValues: editableItems.map { item in
                     (item.tag.stableIdentifier, item)
                 })
-                draft = LayoutDraft(order: preferredOrder(cache: cache))
+                draft = LayoutDraft(order: availableOrder(preferredOrder(cache: cache).removingCoronaSelfItems()))
                 rebuildRows()
                 hasUnsavedChanges = false
             } catch {
@@ -114,9 +124,23 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     func save() {
-        layoutStore.saveSavedSectionOrder(draft.order)
-        layoutStore.saveKnownItemIdentifiers(Set(draft.order.visible + draft.order.hidden + draft.order.alwaysHidden))
+        let sanitizedOrder = availableOrder(draft.order.removingCoronaSelfItems())
+        draft = LayoutDraft(order: sanitizedOrder)
+        layoutStore.saveSavedSectionOrder(sanitizedOrder)
+        layoutStore.saveKnownItemIdentifiers(Set(sanitizedOrder.visible + sanitizedOrder.hidden + sanitizedOrder.alwaysHidden))
         hasUnsavedChanges = false
+    }
+
+    func saveAndApply() {
+        save()
+        isApplying = true
+        applyMessage = nil
+        Task {
+            let result = await applyHandler()
+            applyMessage = result.statusTitle
+            isApplying = false
+            refresh()
+        }
     }
 
     func resetToDetectedOrder() {
@@ -162,16 +186,27 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     private func rebuildRows() {
+        draft = LayoutDraft(order: availableOrder(draft.order.removingCoronaSelfItems()))
         visibleRows = rows(for: .visible)
         hiddenRows = rows(for: .hidden)
         alwaysHiddenRows = rows(for: .alwaysHidden)
     }
 
+    private func availableOrder(_ order: SectionOrder) -> SectionOrder {
+        let availableUIDs = Set(itemByUID.keys)
+        return SectionOrder(
+            visible: order.visible.filter { availableUIDs.contains($0) },
+            hidden: order.hidden.filter { availableUIDs.contains($0) },
+            alwaysHidden: order.alwaysHidden.filter { availableUIDs.contains($0) }
+        )
+    }
+
     private func rows(for section: MenuBarSection) -> [Row] {
-        draft.order[section].map { uid in
-            guard let item = itemByUID[uid] else {
-                return Row(uid: uid, title: uid, owner: "Unavailable", detail: "Saved item is not currently running")
+        draft.order[section].compactMap { uid in
+            guard !MenuBarController.isCoronaSelfIdentifier(uid) else {
+                return nil
             }
+            guard let item = itemByUID[uid] else { return nil }
             return Row(
                 uid: uid,
                 title: item.title ?? item.tag.title,
@@ -179,6 +214,12 @@ final class LayoutEditorViewModel: ObservableObject {
                 detail: "window \(item.windowID)  pid \(item.ownerPID)"
             )
         }
+    }
+
+    private static func isCoronaSelfItem(_ item: MenuBarItem) -> Bool {
+        MenuBarController.isCoronaSelfIdentifier(item.tag.stableIdentifier)
+            || item.ownerPID == Int32(ProcessInfo.processInfo.processIdentifier)
+            || item.sourcePID == Int32(ProcessInfo.processInfo.processIdentifier)
     }
 }
 

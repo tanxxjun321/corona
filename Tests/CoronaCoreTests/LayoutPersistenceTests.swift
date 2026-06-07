@@ -29,4 +29,25 @@ final class LayoutPersistenceTests: XCTestCase {
 
         XCTAssertEqual(store.loadKnownItemIdentifiers(), ["a", "b"])
     }
+
+    func testPendingRelocationsRoundTripAndClear() {
+        let suiteName = "CoronaLayoutTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = UserDefaultsLayoutPersistenceStore(defaults: defaults)
+        store.savePendingRelocation(.section(.hidden), for: "app:A")
+        store.savePendingRelocation(.waitForRelaunch(windowID: 42, section: .alwaysHidden), for: "app:B")
+
+        XCTAssertEqual(store.loadPendingRelocations(), [
+            "app:A": .section(.hidden),
+            "app:B": .waitForRelaunch(windowID: 42, section: .alwaysHidden)
+        ])
+
+        store.savePendingRelocation(nil, for: "app:A")
+
+        XCTAssertEqual(store.loadPendingRelocations(), [
+            "app:B": .waitForRelaunch(windowID: 42, section: .alwaysHidden)
+        ])
+    }
 }

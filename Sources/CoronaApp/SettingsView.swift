@@ -187,11 +187,7 @@ private struct BehaviorSettingsPane: View {
     var body: some View {
         Form {
             Toggle("Auto re-hide", isOn: $model.settings.autoRehide)
-            Picker("Strategy", selection: $model.settings.rehideStrategy) {
-                Text("Smart").tag(RehideStrategy.smart)
-                Text("Timer").tag(RehideStrategy.timer)
-                Text("App Switch").tag(RehideStrategy.appSwitch)
-            }
+            LabeledContent("Strategy", value: "Timer")
             Stepper(
                 value: $model.settings.rehideInterval,
                 in: 1...120,
@@ -202,6 +198,9 @@ private struct BehaviorSettingsPane: View {
         }
         .formStyle(.grouped)
         .padding(24)
+        .onAppear {
+            model.settings.rehideStrategy = .timer
+        }
     }
 }
 

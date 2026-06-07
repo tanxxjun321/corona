@@ -8,9 +8,10 @@ final class MenuBarController {
     private let sectionController: StatusSectionController
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
+    private let thumbnailProvider: MenuBarThumbnailProviding
     private var settings: AppSettings
-    private var settingsWindowController: SettingsWindowController?
     private var scanResultsWindowController: ScanResultsWindowController?
+    private var mainPanelWindowController: MainPanelWindowController?
     private var layoutEditorWindowController: LayoutEditorWindowController?
     private var hiddenItemsPanelWindowController: HiddenItemsPanelWindowController?
     private var layoutApplicationController: LayoutApplicationController?
@@ -24,18 +25,25 @@ final class MenuBarController {
     ) {
         self.settingsStore = settingsStore
         self.permissionChecker = permissionChecker
-        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.sectionController = StatusSectionController()
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.cacheController = MenuBarCacheController(provider: PublicMenuBarDiscoveryProvider())
         self.layoutStore = UserDefaultsLayoutPersistenceStore()
+        self.thumbnailProvider = MenuBarThumbnailProvider(
+            settingsStore: settingsStore,
+            permissionChecker: permissionChecker
+        )
         self.settings = settingsStore.load()
     }
 
     func start() {
         configureStatusItem()
         sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
+        sanitizeSavedLayout()
         rebuildMenu()
         scheduleInitialLayoutRestore()
+        showPermissionsOnFirstLaunchIfNeeded()
+        showMainPanelOnLaunchIfReady()
     }
 
     private func configureStatusItem() {
@@ -43,9 +51,16 @@ final class MenuBarController {
         button.image = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "Corona")
         button.image?.isTemplate = true
         button.toolTip = "Corona"
+        button.target = self
+        button.action = #selector(statusItemClicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
     private func rebuildMenu() {
+        updateStatusIcon(for: permissionChecker.snapshot())
+    }
+
+    private func makeStatusMenu() -> NSMenu {
         let snapshot = permissionChecker.snapshot()
         let menu = NSMenu()
 
@@ -54,17 +69,18 @@ final class MenuBarController {
         menu.addItem(statusItem)
         menu.addItem(NSMenuItem.separator())
 
-        let toggleHidden = NSMenuItem(
-            title: hiddenToggleTitle,
-            action: #selector(showHiddenItems),
-            keyEquivalent: ""
-        )
-        toggleHidden.target = self
-        toggleHidden.isEnabled = snapshot.canRunCoreFeatures
-        menu.addItem(toggleHidden)
+        let showHidden = NSMenuItem(title: "Show Hidden Items", action: #selector(showHiddenItems), keyEquivalent: "")
+        showHidden.target = self
+        showHidden.isEnabled = snapshot.canRunCoreFeatures && sectionController.hiddenVisibility == .hidden
+        menu.addItem(showHidden)
+
+        let hideHidden = NSMenuItem(title: "Hide Hidden Items", action: #selector(hideHiddenItems), keyEquivalent: "")
+        hideHidden.target = self
+        hideHidden.isEnabled = snapshot.canRunCoreFeatures && sectionController.hiddenVisibility == .shown
+        menu.addItem(hideHidden)
 
         let hiddenPanel = NSMenuItem(
-            title: "Open Hidden Panel...",
+            title: "Hidden Items Panel...",
             action: #selector(openHiddenPanel),
             keyEquivalent: ""
         )
@@ -72,8 +88,17 @@ final class MenuBarController {
         hiddenPanel.isEnabled = snapshot.canRunCoreFeatures
         menu.addItem(hiddenPanel)
 
+        let mainPanel = NSMenuItem(
+            title: "Organize Menu Bar...",
+            action: #selector(openMainPanel),
+            keyEquivalent: ""
+        )
+        mainPanel.target = self
+        mainPanel.isEnabled = snapshot.canRunCoreFeatures
+        menu.addItem(mainPanel)
+
         let layout = NSMenuItem(
-            title: "Open Layout Editor...",
+            title: "Advanced Layout Editor...",
             action: #selector(openLayoutEditor),
             keyEquivalent: ""
         )
@@ -105,14 +130,6 @@ final class MenuBarController {
         scan.isEnabled = snapshot.canRunCoreFeatures
         menu.addItem(scan)
 
-        let permissions = NSMenuItem(
-            title: "Permissions...",
-            action: #selector(openSettings),
-            keyEquivalent: ","
-        )
-        permissions.target = self
-        menu.addItem(permissions)
-
         let refresh = NSMenuItem(
             title: "Refresh Permission Status",
             action: #selector(refreshPermissions),
@@ -131,8 +148,7 @@ final class MenuBarController {
         quit.target = self
         menu.addItem(quit)
 
-        statusItem.menu = menu
-        updateStatusIcon(for: snapshot)
+        return menu
     }
 
     private func scheduleInitialLayoutRestore() {
@@ -142,11 +158,28 @@ final class MenuBarController {
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard let self, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
-            let result = await self.ensureLayoutApplicationController().applySavedLayout()
+            await MainActor.run {
+                self.sanitizeSavedLayout()
+            }
+            let result = await self.applySavedLayoutWithVisibleBoundary()
             await MainActor.run {
                 self.lastLayoutApplicationResult = result
                 self.rebuildMenu()
             }
+        }
+    }
+
+    private func showPermissionsOnFirstLaunchIfNeeded() {
+        guard !permissionChecker.snapshot().canRunCoreFeatures else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.openSettings()
+        }
+    }
+
+    private func showMainPanelOnLaunchIfReady() {
+        guard permissionChecker.snapshot().canRunCoreFeatures else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.openMainPanel()
         }
     }
 
@@ -175,23 +208,65 @@ final class MenuBarController {
         statusItem.button?.image?.isTemplate = true
     }
 
-    private var hiddenToggleTitle: String {
+    @objc private func showHiddenItems() {
+        sectionController.setHiddenSectionVisible(true)
+        scheduleAutoRehideIfNeeded()
+        rebuildMenu()
+    }
+
+    @objc private func hideHiddenItems() {
+        autoRehideTask?.cancel()
+        sectionController.setHiddenSectionVisible(false)
+        rebuildMenu()
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            if let button = statusItem.button {
+                makeStatusMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+            }
+            return
+        }
+
         switch sectionController.hiddenVisibility {
         case .shown:
-            return "Hide Hidden Items"
+            hideHiddenItems()
         case .hidden:
-            return "Show Hidden Items"
+            showHiddenItems()
         }
     }
 
-    @objc private func showHiddenItems() {
-        switch sectionController.hiddenVisibility {
-        case .shown:
-            sectionController.setHiddenSectionVisible(false)
-        case .hidden:
-            sectionController.setHiddenSectionVisible(true)
+    @objc private func openMainPanel() {
+        if mainPanelWindowController == nil {
+            mainPanelWindowController = MainPanelWindowController(
+                cacheController: cacheController,
+                layoutStore: layoutStore,
+                settingsStore: settingsStore,
+                settings: settings,
+                permissionChecker: permissionChecker,
+                boundaryProvider: { [weak self] in
+                    self?.sectionController.currentBoundary()
+                },
+                applyHandler: { [weak self] in
+                    guard let self else { return .failed("Controller unavailable") }
+                    let result = await self.applySavedLayoutWithVisibleBoundary()
+                    self.lastLayoutApplicationResult = result
+                    self.rebuildMenu()
+                    return result
+                },
+                onSettingsChanged: { [weak self] settings in
+                    self?.settings = settings
+                    self?.sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
+                    self?.settingsStore.save(settings)
+                    self?.rebuildMenu()
+                },
+                onPermissionsChanged: { [weak self] in
+                    self?.rebuildMenu()
+                }
+            )
         }
-        rebuildMenu()
+        mainPanelWindowController?.show()
     }
 
     @objc private func openLayoutEditor() {
@@ -202,6 +277,13 @@ final class MenuBarController {
                 settingsStore: settingsStore,
                 boundaryProvider: { [weak self] in
                     self?.sectionController.currentBoundary()
+                },
+                applyHandler: { [weak self] in
+                    guard let self else { return .failed("Controller unavailable") }
+                    let result = await self.applySavedLayoutWithVisibleBoundary()
+                    self.lastLayoutApplicationResult = result
+                    self.rebuildMenu()
+                    return result
                 }
             )
         }
@@ -213,6 +295,7 @@ final class MenuBarController {
             hiddenItemsPanelWindowController = HiddenItemsPanelWindowController(
                 cacheController: cacheController,
                 layoutStore: layoutStore,
+                thumbnailProvider: thumbnailProvider,
                 revealHandler: { [weak self] uid in
                     guard let self else { return .failed("Controller unavailable") }
                     let result = await self.ensureLayoutApplicationController().reveal(uid: uid)
@@ -226,17 +309,21 @@ final class MenuBarController {
 
     @objc private func openScanResults() {
         if scanResultsWindowController == nil {
-            scanResultsWindowController = ScanResultsWindowController(cacheController: cacheController)
+            scanResultsWindowController = ScanResultsWindowController(
+                cacheController: cacheController,
+                thumbnailProvider: thumbnailProvider,
+                boundaryProvider: { [weak self] in
+                    self?.sectionController.currentBoundary()
+                }
+            )
         }
         scanResultsWindowController?.show()
     }
 
     @objc private func applySavedLayout() {
-        let layoutApplicationController = ensureLayoutApplicationController()
-
         Task { [weak self] in
             guard let self else { return }
-            let result = await layoutApplicationController.applySavedLayout()
+            let result = await self.applySavedLayoutWithVisibleBoundary()
             await MainActor.run {
                 self.lastLayoutApplicationResult = result
                 self.rebuildMenu()
@@ -264,6 +351,55 @@ final class MenuBarController {
         return controller
     }
 
+    @MainActor
+    private func applySavedLayoutWithVisibleBoundary() async -> LayoutApplicationResult {
+        sanitizeSavedLayout()
+        autoRehideTask?.cancel()
+
+        sectionController.setHiddenSectionVisible(true)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(true)
+        }
+
+        try? await Task.sleep(nanoseconds: 180_000_000)
+        let result = await ensureLayoutApplicationController().applySavedLayout()
+
+        sectionController.setHiddenSectionVisible(false)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(false)
+        }
+        rebuildMenu()
+        return result
+    }
+
+    private func sanitizeSavedLayout() {
+        let savedOrder = layoutStore.loadSavedSectionOrder()
+        let sanitized = savedOrder.removingCoronaSelfItems()
+        if sanitized != savedOrder {
+            layoutStore.saveSavedSectionOrder(sanitized)
+        }
+
+        let known = layoutStore.loadKnownItemIdentifiers()
+        let sanitizedKnown = known.filter { !Self.isCoronaSelfIdentifier($0) }
+        if sanitizedKnown != known {
+            layoutStore.saveKnownItemIdentifiers(Set(sanitizedKnown))
+        }
+
+        let savedUIDs = Set(savedOrder.visible + savedOrder.hidden + savedOrder.alwaysHidden)
+        for uid in known.union(savedUIDs) where Self.isCoronaSelfIdentifier(uid) {
+            layoutStore.savePendingRelocation(nil, for: uid)
+        }
+    }
+
+    static func isCoronaSelfIdentifier(_ uid: String) -> Bool {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.ltz.corona"
+        return uid.localizedCaseInsensitiveContains(bundleIdentifier)
+            || uid.localizedCaseInsensitiveContains("com.ltz.corona")
+            || uid.localizedCaseInsensitiveContains("Corona:Corona")
+            || uid.localizedCaseInsensitiveContains("Corona:Status Item")
+            || uid.localizedCaseInsensitiveContains("corona.control")
+    }
+
     private func scheduleAutoRehideIfNeeded() {
         let latestSettings = settingsStore.load()
         guard latestSettings.autoRehide else { return }
@@ -273,7 +409,7 @@ final class MenuBarController {
             let delay = UInt64(max(0.5, latestSettings.rehideInterval) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: delay)
             guard let self, !Task.isCancelled, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
-            let result = await self.ensureLayoutApplicationController().applySavedLayout()
+            let result = await self.applySavedLayoutWithVisibleBoundary()
             await MainActor.run {
                 self.lastLayoutApplicationResult = result
                 self.rebuildMenu()
@@ -282,31 +418,26 @@ final class MenuBarController {
     }
 
     @objc private func openSettings() {
-        if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(
-                settings: settings,
-                settingsStore: settingsStore,
-                permissionChecker: permissionChecker,
-                onSettingsChanged: { [weak self] settings in
-                    self?.settings = settings
-                    self?.sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
-                    self?.settingsStore.save(settings)
-                    self?.rebuildMenu()
-                },
-                onPermissionsChanged: { [weak self] in
-                    self?.rebuildMenu()
-                }
-            )
-        }
-        settingsWindowController?.show()
+        openMainPanel()
+        mainPanelWindowController?.showSettings()
     }
 
     @objc private func refreshPermissions() {
-        settingsWindowController?.refreshPermissions()
+        mainPanelWindowController?.refreshPermissions()
         rebuildMenu()
     }
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+extension SectionOrder {
+    func removingCoronaSelfItems() -> SectionOrder {
+        SectionOrder(
+            visible: visible.filter { !MenuBarController.isCoronaSelfIdentifier($0) },
+            hidden: hidden.filter { !MenuBarController.isCoronaSelfIdentifier($0) },
+            alwaysHidden: alwaysHidden.filter { !MenuBarController.isCoronaSelfIdentifier($0) }
+        )
     }
 }
