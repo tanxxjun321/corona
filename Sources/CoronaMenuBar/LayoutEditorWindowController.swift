@@ -59,7 +59,7 @@ final class LayoutEditorViewModel: ObservableObject {
     private let layoutStore: LayoutPersistenceStore
     private let settingsStore: SettingsStore
     private var itemByUID: [String: MenuBarItem] = [:]
-    private var currentOrder = SectionOrder()
+    private var draft = LayoutDraft()
 
     init(
         provider: MenuBarDiscoveryProvider,
@@ -86,10 +86,10 @@ final class LayoutEditorViewModel: ObservableObject {
                 itemByUID = Dictionary(uniqueKeysWithValues: snapshot.items.map { item in
                     (item.tag.stableIdentifier, item)
                 })
-                currentOrder = LayoutPlanner().mergedOrder(
+                draft = LayoutDraft(order: LayoutPlanner().mergedOrder(
                     cache: cache,
                     preference: layoutPreference()
-                )
+                ))
                 rebuildRows()
                 hasUnsavedChanges = false
             } catch {
@@ -100,38 +100,31 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     func move(_ uid: String, to section: MenuBarSection) {
-        remove(uid)
-        currentOrder[section].append(uid)
+        draft.move(uid, to: section)
         rebuildRows()
         hasUnsavedChanges = true
     }
 
     func moveUp(_ uid: String, in section: MenuBarSection) {
-        guard let index = currentOrder[section].firstIndex(of: uid), index > currentOrder[section].startIndex else {
-            return
-        }
-        currentOrder[section].swapAt(index, currentOrder[section].index(before: index))
+        draft.moveUp(uid, in: section)
         rebuildRows()
         hasUnsavedChanges = true
     }
 
     func moveDown(_ uid: String, in section: MenuBarSection) {
-        guard let index = currentOrder[section].firstIndex(of: uid) else { return }
-        let next = currentOrder[section].index(after: index)
-        guard next < currentOrder[section].endIndex else { return }
-        currentOrder[section].swapAt(index, next)
+        draft.moveDown(uid, in: section)
         rebuildRows()
         hasUnsavedChanges = true
     }
 
     func save() {
-        layoutStore.saveSavedSectionOrder(currentOrder)
-        layoutStore.saveKnownItemIdentifiers(Set(currentOrder.visible + currentOrder.hidden + currentOrder.alwaysHidden))
+        layoutStore.saveSavedSectionOrder(draft.order)
+        layoutStore.saveKnownItemIdentifiers(Set(draft.order.visible + draft.order.hidden + draft.order.alwaysHidden))
         hasUnsavedChanges = false
     }
 
     func resetToDetectedOrder() {
-        currentOrder = SectionOrder(visible: itemByUID.keys.sorted(), hidden: [], alwaysHidden: [])
+        draft.reset(visibleUIDs: itemByUID.keys.sorted())
         rebuildRows()
         hasUnsavedChanges = true
     }
@@ -146,12 +139,6 @@ final class LayoutEditorViewModel: ObservableObject {
         )
     }
 
-    private func remove(_ uid: String) {
-        for section in MenuBarSection.allCases {
-            currentOrder[section].removeAll { $0 == uid }
-        }
-    }
-
     private func rebuildRows() {
         visibleRows = rows(for: .visible)
         hiddenRows = rows(for: .hidden)
@@ -159,7 +146,7 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     private func rows(for section: MenuBarSection) -> [Row] {
-        currentOrder[section].map { uid in
+        draft.order[section].map { uid in
             guard let item = itemByUID[uid] else {
                 return Row(uid: uid, title: uid, owner: "Unavailable", detail: "Saved item is not currently running")
             }
