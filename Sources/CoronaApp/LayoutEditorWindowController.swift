@@ -154,7 +154,7 @@ final class LayoutEditorViewModel: ObservableObject {
         return LayoutPreference(
             savedOrder: layoutStore.loadSavedSectionOrder(),
             newItemsSection: MenuBarSection(settings.newItemsSection),
-            newItemsPlacement: .append,
+            newItemsPlacement: settings.newItemsPlacement,
             alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
         )
     }

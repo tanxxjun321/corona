@@ -11,6 +11,7 @@ struct MenuBarVisualItem: Identifiable {
     var desiredSection: MenuBarSection
     var physicalSection: MenuBarSection
     var isMovable: Bool
+    var canHide: Bool
     var isSystemItem: Bool
     var thumbnail: NSImage
 
@@ -52,7 +53,6 @@ struct MenuBarVisualSnapshotProvider {
         let visualItems = orderedItems.enumerated().map { index, item in
             let uid = item.tag.stableIdentifier
             let desiredSection = desiredSectionByUID[uid] ?? physicalSectionByUID[uid] ?? .visible
-            let isUserHideable = item.isMovable && item.canBeHidden
             return MenuBarVisualItem(
                 uid: uid,
                 title: item.title ?? item.tag.title,
@@ -61,7 +61,8 @@ struct MenuBarVisualSnapshotProvider {
                 position: index + 1,
                 desiredSection: desiredSection,
                 physicalSection: physicalSectionByUID[uid] ?? .visible,
-                isMovable: isUserHideable,
+                isMovable: item.isMovable,
+                canHide: item.canBeHidden,
                 isSystemItem: !item.canBeHidden,
                 thumbnail: thumbnailProvider.thumbnail(for: item)
             )

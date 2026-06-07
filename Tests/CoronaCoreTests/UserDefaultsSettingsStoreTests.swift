@@ -25,6 +25,7 @@ final class UserDefaultsSettingsStoreTests: XCTestCase {
             rehideStrategy: .timer,
             rehideInterval: 12,
             newItemsSection: .alwaysHidden,
+            newItemsPlacement: .rightOf("com.example.MenuItem:Status"),
             enableAlwaysHiddenSection: true,
             enableScreenRecordingPreviews: true,
             enableDiagnosticLogging: true

@@ -212,7 +212,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
                     (item.tag.stableIdentifier, item)
                 })
                 let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-                rows = makeRows(uids: order.hidden + order.alwaysHidden, itemByUID: itemByUID)
+                rows = makeRows(uids: order.hidden, itemByUID: itemByUID)
             } catch {
                 CoronaDebugLog.log("hoverBar.refresh failed error=\(String(describing: error))")
             }
@@ -245,7 +245,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     var hasSavedHiddenItems: Bool {
         let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-        return !order.hidden.isEmpty || !order.alwaysHidden.isEmpty
+        return !order.hidden.isEmpty
     }
 
     func reveal(uid: String) {

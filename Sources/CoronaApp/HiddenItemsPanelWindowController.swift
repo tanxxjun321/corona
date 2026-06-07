@@ -87,7 +87,6 @@ final class HiddenItemsPanelViewModel: ObservableObject {
                 })
                 let order = layoutStore.loadSavedSectionOrder()
                 rows = makeRows(uids: order.hidden, section: .hidden, itemByUID: itemByUID)
-                    + makeRows(uids: order.alwaysHidden, section: .alwaysHidden, itemByUID: itemByUID)
             } catch {
                 errorMessage = String(describing: error)
             }

@@ -234,6 +234,13 @@ final class MenuBarController {
                     self.rebuildMenu()
                     return result
                 },
+                applyMoveHandler: { [weak self] uid, desiredOrder in
+                    guard let self else { return .failed("Controller unavailable") }
+                    let result = await self.applySingleMoveWithVisibleBoundary(uid: uid, desiredOrder: desiredOrder)
+                    self.lastLayoutApplicationResult = result
+                    self.rebuildMenu()
+                    return result
+                },
                 onSettingsChanged: { [weak self] settings in
                     self?.settings = settings
                     self?.sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
@@ -280,9 +287,6 @@ final class MenuBarController {
                     CoronaDebugLog.log("hiddenPanel.reveal expandOnly uid=\(uid)")
                     await MainActor.run {
                         self.sectionController.setHiddenSectionVisible(true)
-                        if self.settings.enableAlwaysHiddenSection {
-                            self.sectionController.setAlwaysHiddenSectionVisible(true)
-                        }
                         self.rebuildMenu()
                     }
                     let result = LayoutApplicationResult.satisfied
@@ -322,9 +326,6 @@ final class MenuBarController {
                 guard let self else { return .failed("Controller unavailable") }
                 CoronaDebugLog.log("hoverBar.reveal expandOnly uid=\(uid)")
                 self.sectionController.setHiddenSectionVisible(true)
-                if self.settings.enableAlwaysHiddenSection {
-                    self.sectionController.setAlwaysHiddenSectionVisible(true)
-                }
                 self.rebuildMenu()
                 self.scheduleAutoRehideIfNeeded()
                 return .satisfied
@@ -400,6 +401,29 @@ final class MenuBarController {
 
         try? await Task.sleep(nanoseconds: 180_000_000)
         let result = await ensureLayoutApplicationController().applySavedLayout()
+
+        if result.isSuccessfulApply {
+            sectionController.setHiddenSectionVisible(false)
+            if settings.enableAlwaysHiddenSection {
+                sectionController.setAlwaysHiddenSectionVisible(false)
+            }
+        }
+        rebuildMenu()
+        return result
+    }
+
+    @MainActor
+    private func applySingleMoveWithVisibleBoundary(uid: String, desiredOrder: SectionOrder) async -> LayoutApplicationResult {
+        sanitizeSavedLayout()
+        autoRehideTask?.cancel()
+
+        sectionController.setHiddenSectionVisible(true)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(true)
+        }
+
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        let result = await ensureLayoutApplicationController().applySingleMove(uid: uid, desiredOrder: desiredOrder)
 
         if result.isSuccessfulApply {
             sectionController.setHiddenSectionVisible(false)

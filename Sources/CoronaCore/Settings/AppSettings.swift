@@ -19,6 +19,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var rehideStrategy: RehideStrategy
     public var rehideInterval: TimeInterval
     public var newItemsSection: NewItemsSection
+    public var newItemsPlacement: NewItemsPlacement
     public var enableAlwaysHiddenSection: Bool
     public var enableScreenRecordingPreviews: Bool
     public var enableDiagnosticLogging: Bool
@@ -30,6 +31,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         rehideStrategy: RehideStrategy = .timer,
         rehideInterval: TimeInterval = 8,
         newItemsSection: NewItemsSection = .visible,
+        newItemsPlacement: NewItemsPlacement = .append,
         enableAlwaysHiddenSection: Bool = false,
         enableScreenRecordingPreviews: Bool = false,
         enableDiagnosticLogging: Bool = false
@@ -40,6 +42,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.rehideStrategy = rehideStrategy
         self.rehideInterval = rehideInterval
         self.newItemsSection = newItemsSection
+        self.newItemsPlacement = newItemsPlacement
         self.enableAlwaysHiddenSection = enableAlwaysHiddenSection
         self.enableScreenRecordingPreviews = enableScreenRecordingPreviews
         self.enableDiagnosticLogging = enableDiagnosticLogging

@@ -95,6 +95,55 @@ final class LayoutApplicationController {
         return moveCount > 0 ? .applied(moveCount) : .satisfied
     }
 
+    func applySingleMove(uid: String, desiredOrder: SectionOrder) async -> LayoutApplicationResult {
+        guard let boundary = await boundaryProvider() else {
+            CoronaDebugLog.log("layout.applySingleMove missingBoundary uid=\(uid)")
+            return .missingBoundary
+        }
+
+        do {
+            let cache = try await cacheController.cache(boundary: boundary)
+            let manageableCache = cache.keepingOnlyManageableItems()
+            guard let item = manageableCache.item(withStableIdentifier: uid) else {
+                CoronaDebugLog.log("layout.applySingleMove waitingForItem uid=\(uid)")
+                return .waitingForItem(uid)
+            }
+
+            let availableUIDs = Set(manageableCache.allItems.map(\.tag.stableIdentifier))
+            let desired = desiredOrder.keepingOnlyAvailableUIDs(availableUIDs)
+            guard let targetSection = desired.section(containing: uid) else {
+                CoronaDebugLog.log("layout.applySingleMove targetMissing uid=\(uid)")
+                return .waitingForItem(uid)
+            }
+
+            if targetSection != .visible, !item.canBeHidden {
+                CoronaDebugLog.log("layout.applySingleMove rejectedNonHideable uid=\(uid) target=\(targetSection)")
+                return .failed("Item cannot be hidden")
+            }
+
+            let target = singleMoveTarget(uid: uid, section: targetSection, desiredOrder: desired)
+            guard let destination = MoveDestinationResolver().resolve(
+                target: target,
+                cache: manageableCache,
+                sectionBoundaries: await boundaryItemsProvider()
+            ) else {
+                CoronaDebugLog.log("layout.applySingleMove waitingForDestination uid=\(uid) target=\(target)")
+                return .waitingForDestination
+            }
+
+            let move = LayoutMove(itemUID: uid, target: target)
+            CoronaDebugLog.log("layout.applySingleMove uid=\(uid) target=\(target) destination=\(debugDescription(for: destination))")
+            return await apply(
+                step: .move(ResolvedLayoutMove(plannedMove: move, item: item, destination: destination)),
+                cache: manageableCache,
+                boundary: boundary
+            )
+        } catch {
+            CoronaDebugLog.log("layout.applySingleMove failed uid=\(uid) error=\(String(describing: error))")
+            return .failed(String(describing: error))
+        }
+    }
+
     func reveal(uid: String, maxSteps: Int = 8) async -> LayoutApplicationResult {
         guard let boundary = await boundaryProvider() else {
             return .missingBoundary
@@ -170,7 +219,7 @@ final class LayoutApplicationController {
                 preference: LayoutPreference(
                     savedOrder: desiredOrder,
                     newItemsSection: preference.newItemsSection,
-                    newItemsPlacement: .append,
+                    newItemsPlacement: preference.newItemsPlacement,
                     alwaysHiddenEnabled: preference.alwaysHiddenEnabled
                 ),
                 sectionBoundaries: await boundaryItemsProvider()
@@ -351,12 +400,19 @@ final class LayoutApplicationController {
         return order
     }
 
+    private func singleMoveTarget(uid: String, section: MenuBarSection, desiredOrder: SectionOrder) -> LayoutTarget {
+        guard let index = desiredOrder[section].firstIndex(of: uid), index > desiredOrder[section].startIndex else {
+            return .sectionBoundary(section)
+        }
+        return .rightOfUID(desiredOrder[section][desiredOrder[section].index(before: index)])
+    }
+
     private func layoutPreference() -> LayoutPreference {
         let settings = settingsStore.load()
         return LayoutPreference(
             savedOrder: layoutStore.loadSavedSectionOrder(),
             newItemsSection: MenuBarSection(settings.newItemsSection),
-            newItemsPlacement: .append,
+            newItemsPlacement: settings.newItemsPlacement,
             alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
         )
     }
@@ -364,8 +420,19 @@ final class LayoutApplicationController {
     private func layoutPreference(pruningUnavailableItemsIn cache: ItemCache) -> LayoutPreference {
         var preference = layoutPreference()
         let availableUIDs = Set(cache.allItems.map(\.tag.stableIdentifier))
+        let hideableUIDs = Set(cache.allItems.filter(\.canBeHidden).map(\.tag.stableIdentifier))
         let originalOrder = preference.savedOrder
         preference.savedOrder = originalOrder.keepingOnlyAvailableUIDs(availableUIDs)
+        let nonHideableRequestedHidden = (preference.savedOrder.hidden + preference.savedOrder.alwaysHidden)
+            .filter { !hideableUIDs.contains($0) }
+        if !nonHideableRequestedHidden.isEmpty {
+            preference.savedOrder.hidden.removeAll { nonHideableRequestedHidden.contains($0) }
+            preference.savedOrder.alwaysHidden.removeAll { nonHideableRequestedHidden.contains($0) }
+            for uid in nonHideableRequestedHidden where !preference.savedOrder.visible.contains(uid) {
+                preference.savedOrder.visible.append(uid)
+            }
+            CoronaDebugLog.log("layout.preference forcedNonHideableVisible=\(nonHideableRequestedHidden.sorted())")
+        }
 
         let removedUIDs = Set(originalOrder.allUIDs).subtracting(preference.savedOrder.allUIDs)
         if !removedUIDs.isEmpty {
@@ -438,6 +505,6 @@ private extension ItemCache {
 
 private extension MenuBarItem {
     var isManageableByCorona: Bool {
-        isMovable && canBeHidden
+        isMovable
     }
 }

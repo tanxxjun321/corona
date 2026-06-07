@@ -8,6 +8,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
         static let rehideStrategy = "Settings.rehideStrategy"
         static let rehideInterval = "Settings.rehideInterval"
         static let newItemsSection = "Settings.newItemsSection"
+        static let newItemsPlacement = "Settings.newItemsPlacement.v1"
         static let enableAlwaysHiddenSection = "Settings.enableAlwaysHiddenSection"
         static let enableScreenRecordingPreviews = "Settings.enableScreenRecordingPreviews"
         static let enableDiagnosticLogging = "Settings.enableDiagnosticLogging"
@@ -15,6 +16,8 @@ public final class UserDefaultsSettingsStore: SettingsStore {
     }
 
     private let defaults: UserDefaults
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -31,6 +34,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
             rehideStrategy: RehideStrategy(rawValue: integer(forKey: Key.rehideStrategy, default: defaults.rehideStrategy.rawValue)) ?? defaults.rehideStrategy,
             rehideInterval: double(forKey: Key.rehideInterval, default: defaults.rehideInterval),
             newItemsSection: NewItemsSection(rawValue: string(forKey: Key.newItemsSection, default: defaults.newItemsSection.rawValue)) ?? defaults.newItemsSection,
+            newItemsPlacement: codable(forKey: Key.newItemsPlacement, default: defaults.newItemsPlacement),
             enableAlwaysHiddenSection: bool(forKey: Key.enableAlwaysHiddenSection, default: defaults.enableAlwaysHiddenSection),
             enableScreenRecordingPreviews: bool(forKey: Key.enableScreenRecordingPreviews, default: defaults.enableScreenRecordingPreviews),
             enableDiagnosticLogging: bool(forKey: Key.enableDiagnosticLogging, default: defaults.enableDiagnosticLogging)
@@ -44,6 +48,9 @@ public final class UserDefaultsSettingsStore: SettingsStore {
         defaults.set(settings.rehideStrategy.rawValue, forKey: Key.rehideStrategy)
         defaults.set(settings.rehideInterval, forKey: Key.rehideInterval)
         defaults.set(settings.newItemsSection.rawValue, forKey: Key.newItemsSection)
+        if let data = try? encoder.encode(settings.newItemsPlacement) {
+            defaults.set(data, forKey: Key.newItemsPlacement)
+        }
         defaults.set(settings.enableAlwaysHiddenSection, forKey: Key.enableAlwaysHiddenSection)
         defaults.set(settings.enableScreenRecordingPreviews, forKey: Key.enableScreenRecordingPreviews)
         defaults.set(settings.enableDiagnosticLogging, forKey: Key.enableDiagnosticLogging)
@@ -66,6 +73,14 @@ public final class UserDefaultsSettingsStore: SettingsStore {
 
     private func string(forKey key: String, default defaultValue: String) -> String {
         defaults.string(forKey: key) ?? defaultValue
+    }
+
+    private func codable<Value: Decodable>(forKey key: String, default defaultValue: Value) -> Value {
+        guard let data = defaults.data(forKey: key),
+              let value = try? decoder.decode(Value.self, from: data) else {
+            return defaultValue
+        }
+        return value
     }
 
     private func migrateUnsafeDefaultsIfNeeded() {
