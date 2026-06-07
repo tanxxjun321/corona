@@ -16,6 +16,7 @@ final class MenuBarController {
     private var layoutApplicationController: LayoutApplicationController?
     private var lastLayoutApplicationResult: LayoutApplicationResult?
     private var didScheduleInitialLayoutRestore = false
+    private var autoRehideTask: Task<Void, Never>?
 
     init(
         settingsStore: SettingsStore,
@@ -213,7 +214,10 @@ final class MenuBarController {
                 cacheController: cacheController,
                 layoutStore: layoutStore,
                 revealHandler: { [weak self] uid in
-                    await self?.ensureLayoutApplicationController().reveal(uid: uid) ?? .failed("Controller unavailable")
+                    guard let self else { return .failed("Controller unavailable") }
+                    let result = await self.ensureLayoutApplicationController().reveal(uid: uid)
+                    self.scheduleAutoRehideIfNeeded()
+                    return result
                 }
             )
         }
@@ -258,6 +262,23 @@ final class MenuBarController {
         )
         layoutApplicationController = controller
         return controller
+    }
+
+    private func scheduleAutoRehideIfNeeded() {
+        let latestSettings = settingsStore.load()
+        guard latestSettings.autoRehide else { return }
+
+        autoRehideTask?.cancel()
+        autoRehideTask = Task { [weak self] in
+            let delay = UInt64(max(0.5, latestSettings.rehideInterval) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
+            let result = await self.ensureLayoutApplicationController().applySavedLayout()
+            await MainActor.run {
+                self.lastLayoutApplicationResult = result
+                self.rebuildMenu()
+            }
+        }
     }
 
     @objc private func openSettings() {
