@@ -161,10 +161,18 @@ final class LayoutApplicationController {
                 CoronaDebugLog.log("layout.applyNextStep skippedUnmanageable=\(skipped.sorted())")
             }
             let preference = layoutPreference(pruningUnavailableItemsIn: manageableCache)
+            let currentOrder = SectionOrder(cache: manageableCache)
+            let desiredOrder = sectionOnlyDesiredOrder(currentOrder: currentOrder, savedOrder: preference.savedOrder)
             CoronaDebugLog.log("layout.applyNextStep preference visible=\(preference.savedOrder.visible) hidden=\(preference.savedOrder.hidden) alwaysHidden=\(preference.savedOrder.alwaysHidden)")
+            CoronaDebugLog.log("layout.applyNextStep sectionOnlyDesired visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
             let step = planner.nextStep(
                 cache: manageableCache,
-                preference: preference,
+                preference: LayoutPreference(
+                    savedOrder: desiredOrder,
+                    newItemsSection: preference.newItemsSection,
+                    newItemsPlacement: .append,
+                    alwaysHiddenEnabled: preference.alwaysHiddenEnabled
+                ),
                 sectionBoundaries: await boundaryItemsProvider()
             )
             CoronaDebugLog.log("layout.applyNextStep planned=\(debugDescription(for: step))")
@@ -366,6 +374,18 @@ final class LayoutApplicationController {
 
         return preference
     }
+
+    private func sectionOnlyDesiredOrder(currentOrder: SectionOrder, savedOrder: SectionOrder) -> SectionOrder {
+        let savedSectionByUID = savedOrder.sectionMap
+        var result = SectionOrder()
+        for section in MenuBarSection.allCases {
+            for uid in currentOrder[section] {
+                let targetSection = savedSectionByUID[uid] ?? section
+                result[targetSection].append(uid)
+            }
+        }
+        return result
+    }
 }
 
 private extension MenuBarSection {
@@ -384,6 +404,16 @@ private extension MenuBarSection {
 private extension SectionOrder {
     var allUIDs: [String] {
         visible + hidden + alwaysHidden
+    }
+
+    var sectionMap: [String: MenuBarSection] {
+        var result: [String: MenuBarSection] = [:]
+        for section in MenuBarSection.allCases {
+            for uid in self[section] {
+                result[uid] = section
+            }
+        }
+        return result
     }
 
     func keepingOnlyAvailableUIDs(_ availableUIDs: Set<String>) -> SectionOrder {

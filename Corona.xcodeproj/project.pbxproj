@@ -27,6 +27,8 @@
 		1A1000000000000000000012 /* CoronaCore in Frameworks */ = {isa = PBXBuildFile; productRef = 1A1000000000000000000501 /* CoronaCore */; };
 		1A1000000000000000000013 /* MainPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000116 /* MainPanelWindowController.swift */; };
 		1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000117 /* CoronaDebugLog.swift */; };
+		1A1000000000000000000015 /* MenuBarVisualSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */; };
+		1A1000000000000000000016 /* HiddenItemsHoverBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +55,8 @@
 		1A1000000000000000000115 /* Corona.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Corona.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1000000000000000000116 /* MainPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainPanelWindowController.swift; sourceTree = "<group>"; };
 		1A1000000000000000000117 /* CoronaDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoronaDebugLog.swift; sourceTree = "<group>"; };
+		1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarVisualSnapshotProvider.swift; sourceTree = "<group>"; };
+		1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenItemsHoverBarController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +95,7 @@
 				1A1000000000000000000101 /* AppDelegate.swift */,
 				1A1000000000000000000117 /* CoronaDebugLog.swift */,
 				1A1000000000000000000102 /* DirectMoveEventExecutor.swift */,
+				1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */,
 				1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */,
 				1A1000000000000000000104 /* LayoutApplicationController.swift */,
 				1A1000000000000000000105 /* LayoutEditorView.swift */,
@@ -98,6 +103,7 @@
 				1A1000000000000000000116 /* MainPanelWindowController.swift */,
 				1A1000000000000000000107 /* MenuBarController.swift */,
 				1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */,
+				1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */,
 				1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */,
 				1A100000000000000000010A /* ScanResultsWindowController.swift */,
 				1A100000000000000000010B /* SettingsView.swift */,
@@ -213,6 +219,8 @@
 				1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */,
 				1A1000000000000000000007 /* MenuBarController.swift in Sources */,
 				1A1000000000000000000008 /* MenuBarThumbnailProvider.swift in Sources */,
+				1A1000000000000000000015 /* MenuBarVisualSnapshotProvider.swift in Sources */,
+				1A1000000000000000000016 /* HiddenItemsHoverBarController.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

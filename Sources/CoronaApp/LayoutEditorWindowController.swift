@@ -174,24 +174,26 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     private func preferredOrder(cache: ItemCache) -> SectionOrder {
-        let savedOrder = layoutStore.loadSavedSectionOrder()
-        let currentOrder = SectionOrder(cache: cache)
+        let savedOrder = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
+        let currentOrder = SectionOrder(cache: cache).removingCoronaSelfItems()
         guard !savedOrder.isEmpty else {
             return currentOrder
         }
 
-        return SectionOrder(
-            visible: ordered(currentOrder.visible, using: savedOrder.visible),
-            hidden: ordered(currentOrder.hidden, using: savedOrder.hidden),
-            alwaysHidden: ordered(currentOrder.alwaysHidden, using: savedOrder.alwaysHidden)
+        let currentUIDs = Set(currentOrder.visible + currentOrder.hidden + currentOrder.alwaysHidden)
+        let savedUIDs = Set(savedOrder.visible + savedOrder.hidden + savedOrder.alwaysHidden)
+        var result = SectionOrder(
+            visible: savedOrder.visible.filter { currentUIDs.contains($0) },
+            hidden: savedOrder.hidden.filter { currentUIDs.contains($0) },
+            alwaysHidden: savedOrder.alwaysHidden.filter { currentUIDs.contains($0) }
         )
-    }
 
-    private func ordered(_ currentUIDs: [String], using savedUIDs: [String]) -> [String] {
-        let currentSet = Set(currentUIDs)
-        let savedInCurrentSection = savedUIDs.filter { currentSet.contains($0) }
-        let newOrMovedUIDs = currentUIDs.filter { !savedInCurrentSection.contains($0) }
-        return savedInCurrentSection + newOrMovedUIDs
+        for section in MenuBarSection.allCases {
+            for uid in currentOrder[section] where !savedUIDs.contains(uid) {
+                result[section].append(uid)
+            }
+        }
+        return result
     }
 
     private func rebuildRows() {

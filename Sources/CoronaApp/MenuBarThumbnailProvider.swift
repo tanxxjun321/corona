@@ -40,8 +40,29 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
     }
 
     private func fallbackImage(for item: MenuBarItem) -> NSImage {
+        if let applicationIcon = applicationIcon(for: item) {
+            return applicationIcon
+        }
+
         let symbolName = item.isOnScreen ? "app.dashed" : "questionmark.app.dashed"
         return NSImage(systemSymbolName: symbolName, accessibilityDescription: item.title ?? item.tag.title)
             ?? NSWorkspace.shared.icon(for: .applicationBundle)
+    }
+
+    private func applicationIcon(for item: MenuBarItem) -> NSImage? {
+        let pid = item.sourcePID ?? item.ownerPID
+        guard let application = NSRunningApplication(processIdentifier: pid) else {
+            return nil
+        }
+
+        if let icon = application.icon {
+            return icon
+        }
+
+        if let bundleURL = application.bundleURL {
+            return NSWorkspace.shared.icon(forFile: bundleURL.path)
+        }
+
+        return nil
     }
 }

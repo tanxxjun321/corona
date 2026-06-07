@@ -40,7 +40,7 @@ struct LayoutEditorView: View {
                 model.resetToDetectedOrder()
             }
 
-            Button("Save + Apply") {
+            Button("Save") {
                 model.saveAndApply()
             }
             .buttonStyle(.borderedProminent)
