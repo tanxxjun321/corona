@@ -224,7 +224,7 @@ final class MenuBarController {
 
         Task { [weak self] in
             guard let self, let layoutApplicationController else { return }
-            let result = await layoutApplicationController.applyNextStep()
+            let result = await layoutApplicationController.applySavedLayout()
             await MainActor.run {
                 self.lastLayoutApplicationResult = result
                 self.rebuildMenu()

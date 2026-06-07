@@ -3,6 +3,7 @@ import CoronaCore
 
 enum LayoutApplicationResult: Equatable {
     case satisfied
+    case applied(Int)
     case moved(String)
     case missingBoundary
     case waitingForItem(String)
@@ -13,6 +14,8 @@ enum LayoutApplicationResult: Equatable {
         switch self {
         case .satisfied:
             return "Layout up to date"
+        case .applied(let count):
+            return "Applied \(count) layout moves"
         case .moved(let uid):
             return "Moved \(uid)"
         case .missingBoundary:
@@ -55,7 +58,29 @@ final class LayoutApplicationController {
         self.logger = logger
     }
 
-    func applyNextStep() async -> LayoutApplicationResult {
+    func applySavedLayout(maxSteps: Int = 20) async -> LayoutApplicationResult {
+        let limit = max(1, maxSteps)
+        var moveCount = 0
+
+        for _ in 0..<limit {
+            let result = await applyNextStep()
+            switch result {
+            case .moved:
+                moveCount += 1
+                continue
+            case .satisfied:
+                return moveCount > 0 ? .applied(moveCount) : .satisfied
+            case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
+                return moveCount > 0 ? .applied(moveCount) : result
+            case .applied:
+                return result
+            }
+        }
+
+        return moveCount > 0 ? .applied(moveCount) : .satisfied
+    }
+
+    private func applyNextStep() async -> LayoutApplicationResult {
         guard let boundary = await boundaryProvider() else {
             return .missingBoundary
         }
