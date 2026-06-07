@@ -29,6 +29,19 @@ final class MoveDestinationResolverTests: XCTestCase {
         XCTAssertEqual(destination, .leftOfItem(boundary))
     }
 
+    func testResolvesVisibleBoundaryToRightOfControl() {
+        let boundary = makeItem(windowID: 99, namespace: "control", title: "hidden", sourcePID: 10)
+        let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
+
+        let destination = MoveDestinationResolver().resolve(
+            target: .sectionBoundary(.visible),
+            cache: cache,
+            sectionBoundaries: [.visible: boundary]
+        )
+
+        XCTAssertEqual(destination, .rightOfItem(boundary))
+    }
+
     func testReturnsNilForMissingTarget() {
         let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
 

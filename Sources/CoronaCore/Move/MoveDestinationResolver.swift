@@ -17,6 +17,9 @@ public struct MoveDestinationResolver {
             return .rightOfItem(item)
         case .sectionBoundary(let section):
             guard let item = sectionBoundaries[section] else { return nil }
+            if section == .visible {
+                return .rightOfItem(item)
+            }
             return .leftOfItem(item)
         }
     }
