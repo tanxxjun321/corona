@@ -1,0 +1,131 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXFileReference section */
+		1A0000010000000000000001 /* Corona */ = {isa = PBXFileReference; lastKnownFileType = folder; path = .; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1A0000010000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				1A0000010000000000000001 /* Corona */,
+				1A0000010000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1A0000010000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXLegacyTarget section */
+		1A0000010000000000000004 /* CoronaApp */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = scripts/build-app.sh;
+			buildConfigurationList = 1A0000010000000000000005 /* Build configuration list for PBXLegacyTarget "CoronaApp" */;
+			buildPhases = (
+			);
+			buildToolPath = /bin/bash;
+			buildWorkingDirectory = "";
+			dependencies = (
+			);
+			name = CoronaApp;
+			passBuildSettingsInEnvironment = 1;
+			productName = CoronaApp;
+		};
+/* End PBXLegacyTarget section */
+
+/* Begin PBXProject section */
+		1A0000010000000000000006 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+			};
+			buildConfigurationList = 1A0000010000000000000007 /* Build configuration list for PBXProject "Corona" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1A0000010000000000000002;
+			productRefGroup = 1A0000010000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A0000010000000000000004 /* CoronaApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		1A0000010000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CONFIGURATION = debug;
+				PRODUCT_NAME = Corona;
+			};
+			name = Debug;
+		};
+		1A0000010000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CONFIGURATION = release;
+				PRODUCT_NAME = Corona;
+			};
+			name = Release;
+		};
+		1A000001000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CONFIGURATION = debug;
+				PRODUCT_NAME = Corona;
+			};
+			name = Debug;
+		};
+		1A000001000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CONFIGURATION = release;
+				PRODUCT_NAME = Corona;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A0000010000000000000005 /* Build configuration list for PBXLegacyTarget "CoronaApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A000001000000000000000A /* Debug */,
+				1A000001000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1A0000010000000000000007 /* Build configuration list for PBXProject "Corona" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A0000010000000000000008 /* Debug */,
+				1A0000010000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1A0000010000000000000006 /* Project object */;
+}
