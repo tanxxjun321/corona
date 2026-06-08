@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 
 enum StatusSectionVisibility {
     case shown

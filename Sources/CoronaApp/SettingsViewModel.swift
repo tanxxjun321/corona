@@ -1,4 +1,3 @@
-import CoronaCore
 import Foundation
 
 @MainActor

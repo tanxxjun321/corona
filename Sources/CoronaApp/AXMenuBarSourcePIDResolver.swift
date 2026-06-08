@@ -1,7 +1,6 @@
 import ApplicationServices
 import AppKit
 import CoreGraphics
-import CoronaCore
 import Foundation
 
 struct AXMenuBarSourcePIDResolver {

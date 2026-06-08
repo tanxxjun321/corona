@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 
 final class MenuBarController {
     private let settingsStore: SettingsStore

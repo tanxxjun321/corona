@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 
 struct MenuBarVisualItem: Identifiable {
     var id: String { uid }

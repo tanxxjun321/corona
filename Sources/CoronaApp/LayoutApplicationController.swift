@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import CoronaCore
 
 enum LayoutApplicationResult: Equatable {
     case satisfied

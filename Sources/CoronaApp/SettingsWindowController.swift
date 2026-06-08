@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 import SwiftUI
 
 final class SettingsWindowController: NSWindowController {

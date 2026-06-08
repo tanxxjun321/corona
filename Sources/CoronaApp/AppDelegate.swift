@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?

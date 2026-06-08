@@ -1,6 +1,5 @@
 import AppKit
 import CoreGraphics
-import CoronaCore
 import UniformTypeIdentifiers
 
 protocol MenuBarThumbnailProviding {

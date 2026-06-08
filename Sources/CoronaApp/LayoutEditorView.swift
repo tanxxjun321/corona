@@ -1,4 +1,3 @@
-import CoronaCore
 import SwiftUI
 
 struct LayoutEditorView: View {

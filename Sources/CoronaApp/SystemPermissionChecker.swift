@@ -1,6 +1,5 @@
 import AppKit
 import ApplicationServices
-import CoronaCore
 import CoreGraphics
 
 struct SystemPermissionChecker: PermissionChecking {

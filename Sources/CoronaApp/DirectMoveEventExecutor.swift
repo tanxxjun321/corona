@@ -1,5 +1,4 @@
 import AppKit
-import CoronaCore
 
 struct DirectMoveEventExecutor: MoveEventExecutor {
     private enum Constants {
