@@ -29,6 +29,9 @@
 		1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000117 /* CoronaDebugLog.swift */; };
 		1A1000000000000000000015 /* MenuBarVisualSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */; };
 		1A1000000000000000000016 /* HiddenItemsHoverBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */; };
+		1A1000000000000000000017 /* PrivateMenuBarWindowListProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */; };
+		1A1000000000000000000018 /* AXMenuBarSourcePIDResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */; };
+		1A1000000000000000000019 /* SkyLightWindowImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011C /* SkyLightWindowImageProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +60,9 @@
 		1A1000000000000000000117 /* CoronaDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoronaDebugLog.swift; sourceTree = "<group>"; };
 		1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarVisualSnapshotProvider.swift; sourceTree = "<group>"; };
 		1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenItemsHoverBarController.swift; sourceTree = "<group>"; };
+		1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateMenuBarWindowListProvider.swift; sourceTree = "<group>"; };
+		1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXMenuBarSourcePIDResolver.swift; sourceTree = "<group>"; };
+		1A100000000000000000011C /* SkyLightWindowImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLightWindowImageProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +99,7 @@
 			isa = PBXGroup;
 			children = (
 				1A1000000000000000000101 /* AppDelegate.swift */,
+				1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */,
 				1A1000000000000000000117 /* CoronaDebugLog.swift */,
 				1A1000000000000000000102 /* DirectMoveEventExecutor.swift */,
 				1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */,
@@ -104,11 +111,13 @@
 				1A1000000000000000000107 /* MenuBarController.swift */,
 				1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */,
 				1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */,
+				1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */,
 				1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */,
 				1A100000000000000000010A /* ScanResultsWindowController.swift */,
 				1A100000000000000000010B /* SettingsView.swift */,
 				1A100000000000000000010C /* SettingsViewModel.swift */,
 				1A100000000000000000010D /* SettingsWindowController.swift */,
+				1A100000000000000000011C /* SkyLightWindowImageProvider.swift */,
 				1A100000000000000000010E /* StatusSectionController.swift */,
 				1A100000000000000000010F /* SystemPermissionChecker.swift */,
 				1A1000000000000000000110 /* main.swift */,
@@ -221,6 +230,9 @@
 				1A1000000000000000000008 /* MenuBarThumbnailProvider.swift in Sources */,
 				1A1000000000000000000015 /* MenuBarVisualSnapshotProvider.swift in Sources */,
 				1A1000000000000000000016 /* HiddenItemsHoverBarController.swift in Sources */,
+				1A1000000000000000000017 /* PrivateMenuBarWindowListProvider.swift in Sources */,
+				1A1000000000000000000018 /* AXMenuBarSourcePIDResolver.swift in Sources */,
+				1A1000000000000000000019 /* SkyLightWindowImageProvider.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

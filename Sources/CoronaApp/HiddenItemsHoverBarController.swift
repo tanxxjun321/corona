@@ -16,6 +16,8 @@ final class HiddenItemsHoverBarController {
         thumbnailProvider: MenuBarThumbnailProviding,
         permissionChecker: SystemPermissionChecker,
         boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
+        visualCacheProvider: @escaping @MainActor () async throws -> ItemCache,
+        visualCacheCleanup: @escaping @MainActor () -> Void,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.model = HiddenItemsHoverBarModel(
@@ -24,6 +26,8 @@ final class HiddenItemsHoverBarController {
             thumbnailProvider: thumbnailProvider,
             permissionChecker: permissionChecker,
             boundaryProvider: boundaryProvider,
+            visualCacheProvider: visualCacheProvider,
+            visualCacheCleanup: visualCacheCleanup,
             revealHandler: revealHandler
         )
     }
@@ -56,6 +60,25 @@ final class HiddenItemsHoverBarController {
         panel?.orderOut(nil)
     }
 
+    func show(attachedTo button: NSStatusBarButton) {
+        guard let window = button.window else { return }
+        if panel?.isVisible == true {
+            panel?.orderOut(nil)
+            return
+        }
+
+        let anchorFrame = window.frame
+        let screen = window.screen
+            ?? NSScreen.screens.first(where: { $0.frame.intersects(anchorFrame) })
+            ?? NSScreen.main
+
+        Task { @MainActor in
+            await model.refreshNow()
+            guard let screen else { return }
+            show(near: anchorFrame, on: screen)
+        }
+    }
+
     private func handleMouseMoved() {
         let mouse = NSEvent.mouseLocation
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) {
@@ -76,15 +99,11 @@ final class HiddenItemsHoverBarController {
     }
 
     private func show(near triggerFrame: CGRect, on screen: NSScreen) {
-        guard model.hasSavedHiddenItems else {
-            panel?.orderOut(nil)
-            return
-        }
         hideTask?.cancel()
         let panel = ensurePanel()
         model.refresh()
 
-        let width = min(max(model.replicaWidth, 180), screen.frame.width - 32)
+        let width = min(max(model.replicaWidth, 1), screen.frame.width - 32)
         let height = model.replicaHeight
         let preferredMaxX = min(screen.frame.maxX - 12, triggerFrame.maxX + 8)
         let x = min(max(preferredMaxX - width, screen.frame.minX + 2), screen.frame.maxX - width - 12)
@@ -115,7 +134,7 @@ final class HiddenItemsHoverBarController {
 
         let hostingController = NSHostingController(rootView: HiddenItemsHoverBarView(model: model))
         let panel = NSPanel(
-            contentRect: CGRect(x: 0, y: 0, width: 260, height: 54),
+            contentRect: CGRect(x: 0, y: 0, width: 260, height: 37),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -152,15 +171,14 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     var replicaWidth: CGFloat {
         let contentWidth = rows.reduce(CGFloat.zero) { partialResult, row in
-            partialResult + row.displayWidth
+            partialResult + row.itemWidth
         }
-        let gaps = max(0, rows.count - 1) * 4
-        return contentWidth + CGFloat(gaps) + 20
+        return max(contentWidth, 32)
     }
 
     var replicaHeight: CGFloat {
         let maxItemHeight = rows.map(\.itemHeight).max() ?? 24
-        return min(max(maxItemHeight + 20, 46), 58)
+        return min(max(maxItemHeight, 24), 40)
     }
 
     private let cacheController: MenuBarCacheController
@@ -168,6 +186,8 @@ final class HiddenItemsHoverBarModel: ObservableObject {
     private let thumbnailProvider: MenuBarThumbnailProviding
     private let permissionChecker: SystemPermissionChecker
     private let boundaryProvider: @MainActor () -> SectionBoundary?
+    private let visualCacheProvider: @MainActor () async throws -> ItemCache
+    private let visualCacheCleanup: @MainActor () -> Void
     private let revealHandler: @MainActor (String) async -> LayoutApplicationResult
     private var isRefreshing = false
     private var isRefreshingTriggerFrame = false
@@ -181,6 +201,8 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         thumbnailProvider: MenuBarThumbnailProviding,
         permissionChecker: SystemPermissionChecker,
         boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
+        visualCacheProvider: @escaping @MainActor () async throws -> ItemCache,
+        visualCacheCleanup: @escaping @MainActor () -> Void,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.cacheController = cacheController
@@ -188,6 +210,8 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         self.thumbnailProvider = thumbnailProvider
         self.permissionChecker = permissionChecker
         self.boundaryProvider = boundaryProvider
+        self.visualCacheProvider = visualCacheProvider
+        self.visualCacheCleanup = visualCacheCleanup
         self.revealHandler = revealHandler
     }
 
@@ -200,23 +224,37 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         isRefreshing = true
         Task {
             defer { isRefreshing = false }
-            do {
-                let cache: ItemCache
-                if let boundary = boundaryProvider() {
-                    cache = try await cacheController.cache(boundary: boundary)
-                } else {
-                    let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
-                    cache = ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
-                }
-                let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
-                    (item.tag.stableIdentifier, item)
-                })
-                let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-                rows = makeRows(uids: order.hidden, itemByUID: itemByUID)
-            } catch {
-                CoronaDebugLog.log("hoverBar.refresh failed error=\(String(describing: error))")
-            }
+            await refreshNow()
         }
+    }
+
+    func refreshNow() async {
+        guard permissionChecker.snapshot().canRunCoreFeatures else { return }
+        do {
+            let cache = try await visualCacheProvider()
+            let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
+                (item.tag.stableIdentifier, item)
+            })
+            let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
+            let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
+                .map(\.tag.stableIdentifier)
+                .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
+            rows = makeRows(
+                uids: mergedHiddenUIDs(saved: order.hidden + order.alwaysHidden, physical: physicalHiddenUIDs),
+                itemByUID: itemByUID
+            )
+        } catch {
+            CoronaDebugLog.log("hoverBar.refresh failed error=\(String(describing: error))")
+        }
+        visualCacheCleanup()
+    }
+
+    private func currentCache() async throws -> ItemCache {
+        if let boundary = boundaryProvider() {
+            return try await cacheController.cache(boundary: boundary)
+        }
+        let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
+        return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
     }
 
     func refreshTriggerFrame(on screen: NSScreen) {
@@ -245,7 +283,17 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     var hasSavedHiddenItems: Bool {
         let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-        return !order.hidden.isEmpty
+        return !order.hidden.isEmpty || !rows.isEmpty
+    }
+
+    private func mergedHiddenUIDs(saved: [String], physical: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for uid in saved + physical where !seen.contains(uid) {
+            seen.insert(uid)
+            result.append(uid)
+        }
+        return result
     }
 
     func reveal(uid: String) {
@@ -276,20 +324,10 @@ final class HiddenItemsHoverBarModel: ObservableObject {
                 title: item.title ?? item.tag.title,
                 thumbnail: thumbnailProvider.thumbnail(for: item),
                 isAvailable: true,
-                itemWidth: item.bounds.width,
-                itemHeight: item.bounds.height
+                itemWidth: max(item.bounds.width, 1),
+                itemHeight: max(item.bounds.height, 1)
             )
         }
-    }
-}
-
-private extension HiddenItemsHoverBarModel.Row {
-    var displayWidth: CGFloat {
-        min(max(itemWidth, 24), 180)
-    }
-
-    var displayHeight: CGFloat {
-        min(max(itemHeight, 20), 32)
     }
 }
 
@@ -297,11 +335,11 @@ private struct HiddenItemsHoverBarView: View {
     @ObservedObject var model: HiddenItemsHoverBarModel
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             if model.rows.isEmpty {
                 Image(systemName: "eye.slash")
                     .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 24)
+                    .frame(width: 32, height: model.replicaHeight)
             } else {
                 ForEach(model.rows) { row in
                     Button {
@@ -310,15 +348,14 @@ private struct HiddenItemsHoverBarView: View {
                         ZStack {
                             Image(nsImage: row.thumbnail)
                                 .resizable()
-                                .scaledToFit()
-                                .frame(width: row.displayWidth, height: row.displayHeight)
+                                .frame(width: row.itemWidth, height: row.itemHeight)
                                 .opacity(row.isAvailable ? 1 : 0.45)
                             if model.revealingUID == row.uid {
                                 ProgressView()
                                     .controlSize(.small)
                             }
                         }
-                        .frame(width: row.displayWidth, height: 34)
+                        .frame(width: row.itemWidth, height: model.replicaHeight)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -327,14 +364,13 @@ private struct HiddenItemsHoverBarView: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .frame(width: model.replicaWidth, height: model.replicaHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .background(.bar)
+        .clipShape(Rectangle())
         .overlay(
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            Rectangle()
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
     }
 }

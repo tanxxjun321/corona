@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import CoronaCore
 
@@ -211,7 +212,13 @@ final class LayoutApplicationController {
             }
             let preference = layoutPreference(pruningUnavailableItemsIn: manageableCache)
             let currentOrder = SectionOrder(cache: manageableCache)
-            let desiredOrder = sectionOnlyDesiredOrder(currentOrder: currentOrder, savedOrder: preference.savedOrder)
+            var desiredOrder = sectionOnlyDesiredOrder(currentOrder: currentOrder, savedOrder: preference.savedOrder)
+            desiredOrder = applyNotchOverflowIfNeeded(
+                desiredOrder: desiredOrder,
+                cache: cache,
+                manageableCache: manageableCache,
+                settings: settingsStore.load()
+            )
             CoronaDebugLog.log("layout.applyNextStep preference visible=\(preference.savedOrder.visible) hidden=\(preference.savedOrder.hidden) alwaysHidden=\(preference.savedOrder.alwaysHidden)")
             CoronaDebugLog.log("layout.applyNextStep sectionOnlyDesired visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
             let step = planner.nextStep(
@@ -492,6 +499,64 @@ final class LayoutApplicationController {
         }
         return result
     }
+
+    private func applyNotchOverflowIfNeeded(
+        desiredOrder: SectionOrder,
+        cache: ItemCache,
+        manageableCache: ItemCache,
+        settings: AppSettings
+    ) -> SectionOrder {
+        guard settings.enableNotchOverflow,
+              let screen = screen(for: cache.displayID),
+              screen.hasNotch,
+              let notch = screen.frameOfNotch
+        else {
+            return desiredOrder
+        }
+
+        let rightBoundary = menuBarRightBoundary(cache: cache, notch: notch, screen: screen)
+        let notchGap: CGFloat = 24
+        let availableWidth = rightBoundary - (notch.maxX + notchGap)
+        let visibleUIDs = Set(desiredOrder.visible)
+        let itemWidths = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
+            (item.tag.stableIdentifier, item.bounds.width)
+        })
+        let hideableUIDs = Set(
+            manageableCache.allItems
+                .filter { $0.canBeHidden && visibleUIDs.contains($0.tag.stableIdentifier) }
+                .map(\.tag.stableIdentifier)
+        )
+
+        let plan = NotchOverflowPlanner().plan(
+            desiredOrder: desiredOrder,
+            itemWidths: itemWidths,
+            hideableUIDs: hideableUIDs,
+            availableWidth: availableWidth
+        )
+        if !plan.overflowUIDs.isEmpty {
+            CoronaDebugLog.log("layout.notchOverflow availableWidth=\(availableWidth) rightBoundary=\(rightBoundary) notch=\(notch.debugDescription) overflow=\(plan.overflowUIDs)")
+        }
+        return plan.order
+    }
+
+    private func screen(for displayID: UInt32?) -> NSScreen? {
+        if let displayID,
+           let screen = NSScreen.screens.first(where: { UInt32($0.displayID) == displayID }) {
+            return screen
+        }
+        return NSScreen.main
+    }
+
+    private func menuBarRightBoundary(cache: ItemCache, notch: CGRect, screen: NSScreen) -> CGFloat {
+        let protectedVisibleItems = cache.allItems.filter { item in
+            guard item.bounds.minX >= notch.maxX else { return false }
+            return !item.canBeHidden
+        }
+        if let firstProtected = protectedVisibleItems.min(by: { $0.bounds.minX < $1.bounds.minX }) {
+            return firstProtected.bounds.minX
+        }
+        return screen.frame.maxX
+    }
 }
 
 private extension MenuBarSection {
@@ -545,5 +610,29 @@ private extension ItemCache {
 private extension MenuBarItem {
     var isManageableByCorona: Bool {
         isMovable
+    }
+}
+
+private extension NSScreen {
+    var displayID: CGDirectDisplayID {
+        deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+    }
+
+    var hasNotch: Bool {
+        auxiliaryTopLeftArea != nil
+    }
+
+    var frameOfNotch: CGRect? {
+        guard let auxiliaryTopLeftArea,
+              let auxiliaryTopRightArea else {
+            return nil
+        }
+
+        return CGRect(
+            x: auxiliaryTopLeftArea.maxX,
+            y: frame.maxY - safeAreaInsets.top,
+            width: auxiliaryTopRightArea.minX - auxiliaryTopLeftArea.maxX,
+            height: safeAreaInsets.top
+        )
     }
 }

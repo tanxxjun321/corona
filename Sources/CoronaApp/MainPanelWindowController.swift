@@ -3,9 +3,34 @@ import CoronaCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-final class MainPanelWindowController: NSWindowController {
+@MainActor
+private enum MenuBarMenuSuppressor {
+    private static var savedMenu: NSMenu?
+    private static var isSuppressed = false
+
+    static func suppress() {
+        guard !isSuppressed else { return }
+        savedMenu = NSApplication.shared.mainMenu
+        NSApplication.shared.mainMenu = suppressedMainMenu()
+        isSuppressed = true
+    }
+
+    static func restore() {
+        guard isSuppressed else { return }
+        NSApplication.shared.mainMenu = savedMenu
+        savedMenu = nil
+        isSuppressed = false
+    }
+
+    private static func suppressedMainMenu() -> NSMenu {
+        NSMenu(title: "")
+    }
+}
+
+final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
     private let model: MainPanelViewModel
     private let settingsModel: SettingsViewModel
+    private var refreshTask: Task<Void, Never>?
 
     init(
         cacheController: MenuBarCacheController,
@@ -47,6 +72,11 @@ final class MainPanelWindowController: NSWindowController {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
         super.init(window: window)
+        window.delegate = self
+    }
+
+    deinit {
+        refreshTask?.cancel()
     }
 
     @available(*, unavailable)
@@ -56,10 +86,18 @@ final class MainPanelWindowController: NSWindowController {
 
     func show() {
         guard let window else { return }
+        refreshTask?.cancel()
+        model.prepareForPresentation()
+        MenuBarMenuSuppressor.suppress()
+        NSApplication.shared.setActivationPolicy(.regular)
         window.center()
         window.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        model.refresh()
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        refreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.model.refresh()
+        }
         settingsModel.refreshPermissions()
     }
 
@@ -70,7 +108,18 @@ final class MainPanelWindowController: NSWindowController {
 
     func refreshPermissions() {
         settingsModel.refreshPermissions()
-        model.refresh()
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.model.refresh()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        refreshTask?.cancel()
+        MenuBarMenuSuppressor.restore()
+        NSApplication.shared.setActivationPolicy(.accessory)
     }
 }
 
@@ -97,6 +146,8 @@ final class MainPanelViewModel: ObservableObject {
         var isSystemItem: Bool
         var thumbnail: NSImage
         var visualWidth: CGFloat
+        var visualHeight: CGFloat
+        var isPixelPreview: Bool
     }
 
     @Published private(set) var rows: [Row] = []
@@ -128,6 +179,7 @@ final class MainPanelViewModel: ObservableObject {
     private var pendingAutoApplyUID: String?
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
+    private var didExpandMenuBarForRendering = false
 
     init(
         cacheController: MenuBarCacheController,
@@ -154,15 +206,15 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     var visibleRows: [Row] {
-        filteredRows.filter { $0.physicalSection == .visible }
+        filteredRows.filter { $0.desiredSection == .visible }
     }
 
     var hiddenRows: [Row] {
-        filteredRows.filter { $0.physicalSection == .hidden }
+        filteredRows.filter { $0.desiredSection == .hidden }
     }
 
     var alwaysHiddenRows: [Row] {
-        filteredRows.filter { $0.physicalSection == .alwaysHidden }
+        filteredRows.filter { $0.desiredSection == .alwaysHidden }
     }
 
     var hasRows: Bool {
@@ -176,6 +228,10 @@ final class MainPanelViewModel: ObservableObject {
 
     func refresh() {
         refresh(showLoading: true)
+    }
+
+    func prepareForPresentation() {
+        didExpandMenuBarForRendering = false
     }
 
     private func refresh(showLoading: Bool) {
@@ -219,6 +275,9 @@ final class MainPanelViewModel: ObservableObject {
                 CoronaDebugLog.log("main.refresh draft visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
                 if selectedUID == nil || rows.contains(where: { $0.uid == selectedUID }) == false {
                     selectedUID = rows.first?.uid
+                }
+                if shouldExpandMenuBarForRendering() {
+                    expandMenuBarAndRefresh()
                 }
             } catch {
                 CoronaDebugLog.log("main.refresh failed error=\(String(describing: error))")
@@ -520,8 +579,29 @@ final class MainPanelViewModel: ObservableObject {
             canHide: item.canHide,
             isSystemItem: item.isSystemItem,
             thumbnail: item.thumbnail,
-            visualWidth: min(max(item.bounds.width, 22), 96)
+            visualWidth: max(item.bounds.width, 1),
+            visualHeight: max(item.bounds.height, 1),
+            isPixelPreview: item.isPixelPreview
         )
+    }
+
+    private func shouldExpandMenuBarForRendering() -> Bool {
+        guard !didExpandMenuBarForRendering else { return false }
+        guard settingsStore.load().enableScreenRecordingPreviews,
+              permissionChecker.snapshot().canShowPixelPreviews else {
+            return false
+        }
+        return rows.contains { !$0.isPixelPreview }
+    }
+
+    private func expandMenuBarAndRefresh() {
+        didExpandMenuBarForRendering = true
+        let failedUIDs = rows.filter { !$0.isPixelPreview }.map(\.uid)
+        CoronaDebugLog.log("main.render.expandForFallback count=\(failedUIDs.count) uids=\(failedUIDs)")
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            refresh(showLoading: false)
+        }
     }
 
     private func hasManualPlacementMismatches(in order: SectionOrder) -> Bool {
@@ -734,6 +814,10 @@ private struct PreviewSection: View {
     var rows: [MainPanelViewModel.Row]
     @ObservedObject var model: MainPanelViewModel
 
+    private var railHeight: CGFloat {
+        max(rows.map(\.visualHeight).max() ?? 24, 24)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -773,9 +857,7 @@ private struct PreviewSection: View {
                             }
                             Spacer(minLength: 0)
                         }
-                        .frame(minWidth: geometry.size.width - 16, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .frame(minWidth: geometry.size.width, alignment: .leading)
                     }
                     .scrollIndicators(.visible)
                 }
@@ -788,7 +870,7 @@ private struct PreviewSection: View {
                     )
                 )
             }
-            .frame(height: 38)
+            .frame(height: railHeight)
         }
     }
 }
@@ -889,7 +971,7 @@ private struct InsertDropZone: View {
     var body: some View {
         Rectangle()
             .fill(isTargeted ? Color.accentColor.opacity(0.9) : Color.clear)
-            .frame(width: isTargeted ? 8 : 4, height: 26)
+            .frame(width: isTargeted ? 8 : 0, height: 26)
             .clipShape(RoundedRectangle(cornerRadius: 2))
             .onDrop(
                 of: [UTType.plainText],
@@ -936,8 +1018,12 @@ private struct NewItemsMarkerView: View {
 
 private struct MenuBarRailBackground: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(Color(red: 0.72, green: 0.60, blue: 0.47).opacity(0.58))
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.72))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+            )
     }
 }
 
@@ -947,28 +1033,21 @@ private struct PreviewChip: View {
     @ObservedObject var model: MainPanelViewModel
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .center) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.accentColor.opacity(0.18))
+            }
             Image(nsImage: row.thumbnail)
                 .resizable()
-                .scaledToFit()
-                .frame(width: row.visualWidth, height: 24)
+                .frame(width: row.visualWidth, height: row.visualHeight)
                 .foregroundStyle(row.isMovable ? .primary : .secondary)
-                .shadow(color: .black.opacity(0.22), radius: 1.5, x: 0, y: 1)
-            if !row.isMovable || row.needsManualPlacement {
-                Image(systemName: !row.isMovable ? "lock.fill" : "exclamationmark.triangle.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(!row.isMovable ? Color.secondary : Color.orange)
-                    .background(.regularMaterial, in: Circle())
-                    .offset(x: 5, y: -5)
-            }
         }
-        .frame(width: row.visualWidth, height: 26)
+        .frame(width: row.visualWidth, height: row.visualHeight)
         .contentShape(Rectangle())
-        .background(isSelected ? Color.white.opacity(0.26) : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isSelected ? Color.white.opacity(0.85) : Color.clear, lineWidth: 1)
+            statusIndicator,
+            alignment: .topTrailing
         )
         .onTapGesture {
             model.select(uid: row.uid)
@@ -978,6 +1057,16 @@ private struct PreviewChip: View {
             MenuBarDragPayload.provider(uid: row.uid)
         }
         .opacity(row.isMovable ? 1 : 0.58)
+    }
+
+    @ViewBuilder
+    private var statusIndicator: some View {
+        if !row.isMovable || row.needsManualPlacement {
+            Image(systemName: !row.isMovable ? "lock.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(!row.isMovable ? Color.secondary : Color.orange)
+                .offset(x: 3, y: -3)
+        }
     }
 }
 
@@ -1035,7 +1124,7 @@ private struct InspectorPane: View {
     }
 
     private var diagnosticList: some View {
-        List(model.visibleRows + model.hiddenRows) { row in
+        List(model.visibleRows + model.hiddenRows + model.alwaysHiddenRows) { row in
             MainPanelRow(row: row, model: model)
                 .listRowSeparator(.hidden)
                 .onTapGesture {

@@ -10,12 +10,14 @@ final class HiddenItemsPanelWindowController: NSWindowController {
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         thumbnailProvider: MenuBarThumbnailProviding,
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.model = HiddenItemsPanelViewModel(
             cacheController: cacheController,
             layoutStore: layoutStore,
             thumbnailProvider: thumbnailProvider,
+            boundaryProvider: boundaryProvider,
             revealHandler: revealHandler
         )
         let hostingController = NSHostingController(rootView: HiddenItemsPanelView(model: model))
@@ -62,17 +64,20 @@ final class HiddenItemsPanelViewModel: ObservableObject {
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private let thumbnailProvider: MenuBarThumbnailProviding
+    private let boundaryProvider: @MainActor () -> SectionBoundary?
     private let revealHandler: @MainActor (String) async -> LayoutApplicationResult
 
     init(
         cacheController: MenuBarCacheController,
         layoutStore: LayoutPersistenceStore,
         thumbnailProvider: MenuBarThumbnailProviding,
+        boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
         revealHandler: @escaping @MainActor (String) async -> LayoutApplicationResult
     ) {
         self.cacheController = cacheController
         self.layoutStore = layoutStore
         self.thumbnailProvider = thumbnailProvider
+        self.boundaryProvider = boundaryProvider
         self.revealHandler = revealHandler
     }
 
@@ -81,12 +86,25 @@ final class HiddenItemsPanelViewModel: ObservableObject {
         errorMessage = nil
         Task {
             do {
-                let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
-                let itemByUID = Dictionary(uniqueKeysWithValues: snapshot.items.map { item in
+                let cache: ItemCache
+                if let boundary = boundaryProvider() {
+                    cache = try await cacheController.cache(boundary: boundary, refreshIfNeeded: false)
+                } else {
+                    let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
+                    cache = ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
+                }
+                let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
                     (item.tag.stableIdentifier, item)
                 })
                 let order = layoutStore.loadSavedSectionOrder()
-                rows = makeRows(uids: order.hidden, section: .hidden, itemByUID: itemByUID)
+                let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
+                    .map(\.tag.stableIdentifier)
+                    .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
+                rows = makeRows(
+                    uids: mergedHiddenUIDs(saved: order.hidden, physical: physicalHiddenUIDs),
+                    section: .hidden,
+                    itemByUID: itemByUID
+                )
             } catch {
                 errorMessage = String(describing: error)
             }
@@ -131,6 +149,16 @@ final class HiddenItemsPanelViewModel: ObservableObject {
                 thumbnail: thumbnailProvider.thumbnail(for: item)
             )
         }
+    }
+
+    private func mergedHiddenUIDs(saved: [String], physical: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for uid in saved + physical where !seen.contains(uid) {
+            seen.insert(uid)
+            result.append(uid)
+        }
+        return result
     }
 }
 

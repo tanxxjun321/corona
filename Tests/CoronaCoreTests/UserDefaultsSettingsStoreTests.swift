@@ -27,6 +27,7 @@ final class UserDefaultsSettingsStoreTests: XCTestCase {
             newItemsSection: .alwaysHidden,
             newItemsPlacement: .rightOf("com.example.MenuItem:Status"),
             enableAlwaysHiddenSection: true,
+            enableNotchOverflow: false,
             enableScreenRecordingPreviews: true,
             enableDiagnosticLogging: true
         )

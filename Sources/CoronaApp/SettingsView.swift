@@ -170,6 +170,7 @@ private struct GeneralSettingsPane: View {
             Toggle("Launch at login", isOn: $model.settings.launchAtLogin)
             Toggle("Show main menu bar icon", isOn: $model.settings.showMainIcon)
             Toggle("Enable always-hidden section", isOn: $model.settings.enableAlwaysHiddenSection)
+            Toggle("Move items around the notch", isOn: $model.settings.enableNotchOverflow)
             Picker("New items", selection: $model.settings.newItemsSection) {
                 Text("Visible").tag(NewItemsSection.visible)
                 Text("Hidden").tag(NewItemsSection.hidden)

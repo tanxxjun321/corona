@@ -4,55 +4,82 @@ import CoronaCore
 import UniformTypeIdentifiers
 
 protocol MenuBarThumbnailProviding {
-    func thumbnail(for item: MenuBarItem) -> NSImage
+    func thumbnailResult(for item: MenuBarItem) -> MenuBarThumbnailResult
+}
+
+extension MenuBarThumbnailProviding {
+    func thumbnail(for item: MenuBarItem) -> NSImage {
+        thumbnailResult(for: item).image
+    }
+}
+
+struct MenuBarThumbnailResult {
+    var image: NSImage
+    var isPixelPreview: Bool
 }
 
 struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
     private let settingsStore: SettingsStore
     private let permissionChecker: SystemPermissionChecker
+    private let skyLightImageProvider = SkyLightWindowImageProvider()
 
     init(settingsStore: SettingsStore, permissionChecker: SystemPermissionChecker) {
         self.settingsStore = settingsStore
         self.permissionChecker = permissionChecker
     }
 
-    func thumbnail(for item: MenuBarItem) -> NSImage {
+    func thumbnailResult(for item: MenuBarItem) -> MenuBarThumbnailResult {
         let settings = settingsStore.load()
         let permissions = permissionChecker.snapshot()
         guard settings.enableScreenRecordingPreviews,
               permissions.canShowPixelPreviews,
               let image = windowImage(for: item) else {
-            return fallbackImage(for: item)
+            return MenuBarThumbnailResult(image: fallbackImage(for: item), isPixelPreview: false)
         }
-        return image
+        return MenuBarThumbnailResult(image: image, isPixelPreview: true)
     }
 
     private func windowImage(for item: MenuBarItem) -> NSImage? {
-        guard let cgImage = CGWindowListCreateImage(
+        let windowID = CGWindowID(item.windowID)
+        let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
+
+        if let cgImage = CGWindowListCreateImage(
             item.bounds,
             .optionIncludingWindow,
-            CGWindowID(item.windowID),
-            [.boundsIgnoreFraming, .bestResolution]
-        ) else {
-            return nil
+            windowID,
+            options
+        ), hasVisibleContent(cgImage) {
+            return NSImage(cgImage: cgImage, size: item.bounds.size)
         }
-        guard hasVisibleContent(cgImage) else {
-            return nil
+
+        if let cgImage = skyLightImageProvider.image(for: windowID, bounds: item.bounds, options: options),
+           hasVisibleContent(cgImage) {
+            return NSImage(cgImage: cgImage, size: item.bounds.size)
         }
-        return NSImage(cgImage: cgImage, size: item.bounds.size)
+
+        return nil
     }
 
     private func fallbackImage(for item: MenuBarItem) -> NSImage {
-        if let symbolName = fallbackSymbolName(for: item),
-           let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: item.title ?? item.tag.title) {
-            return symbol
+        let width = max(item.bounds.width, 1)
+        let height = max(item.bounds.height, 1)
+        let size = NSSize(width: width, height: height)
+        let image = NSImage(size: size)
+        let title = item.title ?? item.tag.title
+
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+
+        if width >= 34, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            drawMenuBarTitle(title, in: NSRect(origin: .zero, size: size))
+        } else {
+            drawFallbackGlyph(in: NSRect(origin: .zero, size: size), description: title)
         }
 
-        if let applicationIcon = applicationIcon(for: item) {
-            return applicationIcon
-        }
-
-        return initialBadge(for: item)
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 
     private func hasVisibleContent(_ image: CGImage) -> Bool {
@@ -83,76 +110,38 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
         return false
     }
 
-    private func fallbackSymbolName(for item: MenuBarItem) -> String? {
-        let haystack = "\(item.tag.namespace) \(item.tag.title) \(item.title ?? "")".lowercased()
-        let mappings: [(String, String)] = [
-            ("wifi", "wifi"),
-            ("wi-fi", "wifi"),
-            ("bluetooth", "bluetooth"),
-            ("battery", "battery.100"),
-            ("power", "battery.100"),
-            ("sound", "speaker.wave.2.fill"),
-            ("volume", "speaker.wave.2.fill"),
-            ("audio", "speaker.wave.2.fill"),
-            ("display", "display"),
-            ("screen", "display"),
-            ("monitor", "display"),
-            ("keyboard", "keyboard"),
-            ("input", "keyboard"),
-            ("clock", "clock"),
-            ("date", "calendar"),
-            ("time", "clock"),
-            ("control center", "switch.2"),
-            ("controlcentre", "switch.2"),
-            ("now playing", "play.circle.fill"),
-            ("media", "play.circle.fill"),
-            ("cpu", "cpu"),
-            ("memory", "memorychip"),
-            ("network", "network"),
-            ("vpn", "lock.shield"),
-            ("sync", "arrow.triangle.2.circlepath"),
-            ("download", "arrow.down.circle.fill"),
-            ("upload", "arrow.up.circle.fill")
-        ]
-        return mappings.first { haystack.contains($0.0) }?.1
-    }
-
-    private func initialBadge(for item: MenuBarItem) -> NSImage {
-        let size = NSSize(width: 24, height: 24)
-        let image = NSImage(size: size)
-        let title = item.title ?? item.tag.title
-        let initial = title.trimmingCharacters(in: .whitespacesAndNewlines).first.map(String.init) ?? "?"
-
-        image.lockFocus()
-        NSColor.controlAccentColor.withAlphaComponent(0.85).setFill()
-        NSBezierPath(roundedRect: NSRect(origin: .zero, size: size), xRadius: 5, yRadius: 5).fill()
+    private func drawMenuBarTitle(_ title: String, in rect: NSRect) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: NSColor.white
+            .font: NSFont.menuBarFont(ofSize: 0),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph
         ]
-        let textSize = initial.size(withAttributes: attributes)
-        initial.draw(
-            at: NSPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
-            withAttributes: attributes
+        let textSize = title.size(withAttributes: attributes)
+        let textRect = NSRect(
+            x: rect.minX + 4,
+            y: rect.minY + max((rect.height - textSize.height) / 2, 0),
+            width: max(rect.width - 8, 1),
+            height: min(textSize.height, rect.height)
         )
-        image.unlockFocus()
-        return image
+        title.draw(in: textRect, withAttributes: attributes)
     }
 
-    private func applicationIcon(for item: MenuBarItem) -> NSImage? {
-        let pid = item.sourcePID ?? item.ownerPID
-        guard let application = NSRunningApplication(processIdentifier: pid) else {
-            return nil
+    private func drawFallbackGlyph(in rect: NSRect, description: String) {
+        guard let symbol = NSImage(systemSymbolName: "app.dashed", accessibilityDescription: description) else {
+            return
         }
 
-        if let icon = application.icon {
-            return icon
-        }
-
-        if let bundleURL = application.bundleURL {
-            return NSWorkspace.shared.icon(forFile: bundleURL.path)
-        }
-
-        return nil
+        let glyphSize = min(rect.width, rect.height, 18)
+        let glyphRect = NSRect(
+            x: rect.midX - glyphSize / 2,
+            y: rect.midY - glyphSize / 2,
+            width: glyphSize,
+            height: glyphSize
+        )
+        NSColor.labelColor.set()
+        symbol.draw(in: glyphRect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 }

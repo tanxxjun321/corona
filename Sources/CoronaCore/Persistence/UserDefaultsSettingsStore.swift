@@ -10,6 +10,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
         static let newItemsSection = "Settings.newItemsSection"
         static let newItemsPlacement = "Settings.newItemsPlacement.v1"
         static let enableAlwaysHiddenSection = "Settings.enableAlwaysHiddenSection"
+        static let enableNotchOverflow = "Settings.enableNotchOverflow"
         static let enableScreenRecordingPreviews = "Settings.enableScreenRecordingPreviews"
         static let enableDiagnosticLogging = "Settings.enableDiagnosticLogging"
         static let migratedDefaultNewItemsSection = "Settings.migratedDefaultNewItemsSection.v1"
@@ -36,6 +37,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
             newItemsSection: NewItemsSection(rawValue: string(forKey: Key.newItemsSection, default: defaults.newItemsSection.rawValue)) ?? defaults.newItemsSection,
             newItemsPlacement: codable(forKey: Key.newItemsPlacement, default: defaults.newItemsPlacement),
             enableAlwaysHiddenSection: bool(forKey: Key.enableAlwaysHiddenSection, default: defaults.enableAlwaysHiddenSection),
+            enableNotchOverflow: bool(forKey: Key.enableNotchOverflow, default: defaults.enableNotchOverflow),
             enableScreenRecordingPreviews: bool(forKey: Key.enableScreenRecordingPreviews, default: defaults.enableScreenRecordingPreviews),
             enableDiagnosticLogging: bool(forKey: Key.enableDiagnosticLogging, default: defaults.enableDiagnosticLogging)
         )
@@ -52,6 +54,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
             defaults.set(data, forKey: Key.newItemsPlacement)
         }
         defaults.set(settings.enableAlwaysHiddenSection, forKey: Key.enableAlwaysHiddenSection)
+        defaults.set(settings.enableNotchOverflow, forKey: Key.enableNotchOverflow)
         defaults.set(settings.enableScreenRecordingPreviews, forKey: Key.enableScreenRecordingPreviews)
         defaults.set(settings.enableDiagnosticLogging, forKey: Key.enableDiagnosticLogging)
     }

@@ -189,6 +189,7 @@ final class MenuBarController {
         rebuildMenu()
     }
 
+    @MainActor
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
         if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
@@ -198,11 +199,13 @@ final class MenuBarController {
             return
         }
 
-        switch sectionController.hiddenVisibility {
-        case .shown:
-            hideHiddenItems()
-        case .hidden:
-            showHiddenItems()
+        guard permissionChecker.snapshot().canRunCoreFeatures else {
+            openSettings()
+            return
+        }
+
+        if let button = statusItem.button {
+            hiddenItemsHoverBarController?.show(attachedTo: button)
         }
     }
 
@@ -282,6 +285,9 @@ final class MenuBarController {
                 cacheController: cacheController,
                 layoutStore: layoutStore,
                 thumbnailProvider: thumbnailProvider,
+                boundaryProvider: { [weak self] in
+                    self?.sectionController.currentBoundary()
+                },
                 revealHandler: { [weak self] uid in
                     guard let self else { return .failed("Controller unavailable") }
                     CoronaDebugLog.log("hiddenPanel.reveal expandOnly uid=\(uid)")
@@ -321,6 +327,15 @@ final class MenuBarController {
             permissionChecker: permissionChecker,
             boundaryProvider: { [weak self] in
                 self?.sectionController.currentBoundary()
+            },
+            visualCacheProvider: { [weak self] in
+                guard let self else {
+                    return ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
+                }
+                return try await self.captureVisualMenuBarCache()
+            },
+            visualCacheCleanup: { [weak self] in
+                self?.restoreVisualCaptureVisibility()
             },
             revealHandler: { [weak self] uid in
                 guard let self else { return .failed("Controller unavailable") }
