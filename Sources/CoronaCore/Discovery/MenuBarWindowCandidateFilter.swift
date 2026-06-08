@@ -46,6 +46,7 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         guard candidate.ownerName != "Window Server", candidate.title != "Menubar" else { return false }
         guard bundleIdentifierForPID(candidate.ownerPID) != mainBundleIdentifier else { return false }
         guard !isGenericControlCenterContainer(candidate) else { return false }
+        guard !isLeftEdgeControlCenterArtifact(candidate, displayFrames: displayFrames) else { return false }
         guard isStatusItemLayer(candidate.layer) else { return false }
         guard isStatusItemSized(candidate.bounds, displayFrames: displayFrames) else { return false }
         return isInMenuBarVerticalBand(candidate.bounds, displayFrames: displayFrames)
@@ -56,6 +57,22 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         guard candidate.bounds.height < 30 else { return false }
         let ownerName = candidate.ownerName ?? ""
         return ownerName == "Control Center" || ownerName == "控制中心"
+    }
+
+    private func isLeftEdgeControlCenterArtifact(_ candidate: MenuBarWindowCandidate, displayFrames: [CGRect]) -> Bool {
+        let ownerName = candidate.ownerName ?? ""
+        let bundleIdentifier = bundleIdentifierForPID(candidate.ownerPID)
+        let isControlCenter = ownerName == "Control Center" ||
+            ownerName == "控制中心" ||
+            bundleIdentifier == "com.apple.controlcenter"
+        guard isControlCenter else { return false }
+
+        return displayFrames.contains { frame in
+            abs(candidate.bounds.minY - frame.minY) <= 8 &&
+                candidate.bounds.minX >= frame.minX - 1 &&
+                candidate.bounds.minX <= frame.minX + 1 &&
+                candidate.bounds.maxX < frame.midX
+        }
     }
 
     private func isStatusItemLayer(_ layer: Int) -> Bool {

@@ -102,6 +102,32 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
         XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
     }
 
+    func testRejectsLeftEdgeControlCenterArtifact() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "控制中心",
+            title: "控制中心",
+            bounds: CGRect(x: 0, y: 0, width: 38, height: 37),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testAcceptsOffscreenThirdPartyHiddenStatusItem() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "Example",
+            title: "Item-0",
+            bounds: CGRect(x: -10_000, y: 0, width: 24, height: 24),
+            layer: 25
+        )
+
+        XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1728, height: 1117)]))
+    }
+
     func testRejectsSmallWindowNearButBelowMenuBar() {
         let filter = makeFilter()
         let candidate = MenuBarWindowCandidate(

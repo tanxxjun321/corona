@@ -225,6 +225,12 @@ final class MenuBarController {
                     guard let self else {
                         return ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
                     }
+                    return try await self.currentOrganizerMenuBarCache()
+                },
+                readOnlyCacheProvider: { [weak self] in
+                    guard let self else {
+                        return ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
+                    }
                     return try await self.currentMenuBarCacheWithoutChangingVisibility()
                 },
                 visualCacheCleanup: { [weak self] in
@@ -423,6 +429,53 @@ final class MenuBarController {
 
         let sectionByWindowID = SectionClassifier().classify(items: snapshot.items, boundary: boundary)
         return ItemCacheBuilder().build(snapshot: snapshot, sectionByWindowID: sectionByWindowID)
+    }
+
+    @MainActor
+    private func currentOrganizerMenuBarCache() async throws -> ItemCache {
+        let previousVisibility = (
+            hidden: sectionController.hiddenVisibility,
+            alwaysHidden: sectionController.alwaysHiddenVisibility
+        )
+        let shouldExpandHidden = previousVisibility.hidden != .shown
+        let shouldExpandAlwaysHidden = settings.enableAlwaysHiddenSection && previousVisibility.alwaysHidden != .shown
+
+        if shouldExpandHidden {
+            sectionController.setHiddenSectionVisible(true)
+        }
+        if shouldExpandAlwaysHidden {
+            sectionController.setAlwaysHiddenSectionVisible(true)
+        }
+
+        let shouldRestoreVisibility = shouldExpandHidden || shouldExpandAlwaysHidden
+        defer {
+            if shouldRestoreVisibility {
+                sectionController.setHiddenSectionVisible(previousVisibility.hidden == .shown)
+                if settings.enableAlwaysHiddenSection {
+                    sectionController.setAlwaysHiddenSectionVisible(previousVisibility.alwaysHidden == .shown)
+                }
+                rebuildMenu()
+            }
+        }
+
+        if shouldRestoreVisibility {
+            try? await Task.sleep(nanoseconds: 160_000_000)
+        }
+
+        let snapshot = try await cacheController.refresh()
+        guard let boundary = sectionController.currentBoundary() else {
+            CoronaDebugLog.log("main.organizerCache missingBoundary fallback=physicalVisible")
+            return physicallyVisibleCache(from: snapshot)
+        }
+        guard boundary.isOnSameDisplay(as: snapshot.displayID) else {
+            CoronaDebugLog.log("main.organizerCache boundaryDisplayMismatch displayID=\(snapshot.displayID.map(String.init) ?? "nil") hidden=\(boundary.hiddenControlBounds.debugDescription) alwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
+            return physicallyVisibleCache(from: snapshot)
+        }
+
+        let sectionByWindowID = SectionClassifier().classify(items: snapshot.items, boundary: boundary)
+        let cache = ItemCacheBuilder().build(snapshot: snapshot, sectionByWindowID: sectionByWindowID)
+        CoronaDebugLog.log("main.organizerCache expanded=\(shouldRestoreVisibility) visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count)")
+        return cache
     }
 
     private func physicallyVisibleCache(from snapshot: MenuBarSnapshot) -> ItemCache {
