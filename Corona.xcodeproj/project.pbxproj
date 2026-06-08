@@ -80,7 +80,6 @@
 		1A1000000000000000000111 /* Corona.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Corona.icns; sourceTree = "<group>"; };
 		1A1000000000000000000112 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A1000000000000000000113 /* Corona.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Corona.entitlements; sourceTree = "<group>"; };
-		1A1000000000000000000114 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = SOURCE_ROOT; };
 		1A1000000000000000000115 /* Corona.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Corona.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1000000000000000000116 /* MainPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainPanelWindowController.swift; sourceTree = "<group>"; };
 		1A1000000000000000000117 /* CoronaDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoronaDebugLog.swift; sourceTree = "<group>"; };
@@ -134,7 +133,6 @@
 			children = (
 				1A1000000000000000000302 /* Sources */,
 				1A1000000000000000000304 /* App */,
-				1A1000000000000000000114 /* Package.swift */,
 				1A1000000000000000000305 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -318,8 +316,6 @@
 			dependencies = (
 			);
 			name = CoronaApp;
-			packageProductDependencies = (
-			);
 			productName = Corona;
 			productReference = 1A1000000000000000000115 /* Corona.app */;
 			productType = "com.apple.product-type.application";

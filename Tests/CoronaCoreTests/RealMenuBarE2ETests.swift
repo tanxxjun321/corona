@@ -133,7 +133,8 @@ final class RealMenuBarE2ETests: XCTestCase {
         let lines = items.map { item in
             "\(item.tag.stableIdentifier) window=\(item.windowID) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") onScreen=\(item.isOnScreen) bounds=\(item.bounds)"
         }
-        print("[RealMenuBarE2E] \(label) count=\(items.count)\n" + lines.joined(separator: "\n"))
+        let output = "[RealMenuBarE2E] \(label) count=\(items.count)\n" + lines.joined(separator: "\n")
+        XCTContext.runActivity(named: output) { _ in }
     }
 }
 

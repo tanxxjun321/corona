@@ -32,7 +32,7 @@ make release
 单步调试：
 
 ```bash
-CONFIGURATION=Release bash scripts/build-app.sh
+make release-app
 bash scripts/notarize-app.sh
 make verify
 ```

@@ -66,30 +66,6 @@ final class MenuBarController {
         let snapshot = permissionChecker.snapshot()
         let menu = NSMenu()
 
-        let statusItem = NSMenuItem(title: statusTitle(for: snapshot), action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
-        menu.addItem(statusItem)
-        menu.addItem(NSMenuItem.separator())
-
-        let showHidden = NSMenuItem(title: "Show Hidden Items", action: #selector(showHiddenItems), keyEquivalent: "")
-        showHidden.target = self
-        showHidden.isEnabled = snapshot.canRunCoreFeatures && sectionController.hiddenVisibility == .hidden
-        menu.addItem(showHidden)
-
-        let hideHidden = NSMenuItem(title: "Hide Hidden Items", action: #selector(hideHiddenItems), keyEquivalent: "")
-        hideHidden.target = self
-        hideHidden.isEnabled = snapshot.canRunCoreFeatures && sectionController.hiddenVisibility == .shown
-        menu.addItem(hideHidden)
-
-        let hiddenPanel = NSMenuItem(
-            title: "Hidden Items Panel...",
-            action: #selector(openHiddenPanel),
-            keyEquivalent: ""
-        )
-        hiddenPanel.target = self
-        hiddenPanel.isEnabled = snapshot.canRunCoreFeatures
-        menu.addItem(hiddenPanel)
-
         let mainPanel = NSMenuItem(
             title: "Organize Menu Bar...",
             action: #selector(openMainPanel),
@@ -98,34 +74,6 @@ final class MenuBarController {
         mainPanel.target = self
         mainPanel.isEnabled = snapshot.canRunCoreFeatures
         menu.addItem(mainPanel)
-
-        let layout = NSMenuItem(
-            title: "Advanced Layout Editor...",
-            action: #selector(openLayoutEditor),
-            keyEquivalent: ""
-        )
-        layout.target = self
-        layout.isEnabled = snapshot.canRunCoreFeatures
-        menu.addItem(layout)
-
-        let scan = NSMenuItem(
-            title: "Scan Menu Bar Items...",
-            action: #selector(openScanResults),
-            keyEquivalent: ""
-        )
-        scan.target = self
-        scan.isEnabled = snapshot.canRunCoreFeatures
-        menu.addItem(scan)
-
-        let refresh = NSMenuItem(
-            title: "Refresh Permission Status",
-            action: #selector(refreshPermissions),
-            keyEquivalent: "r"
-        )
-        refresh.target = self
-        menu.addItem(refresh)
-
-        menu.addItem(NSMenuItem.separator())
 
         let quit = NSMenuItem(
             title: "Quit Corona",
@@ -152,17 +100,6 @@ final class MenuBarController {
         }
     }
 
-    private func statusTitle(for snapshot: PermissionSnapshot) -> String {
-        switch snapshot.capabilityStatus {
-        case .missing:
-            return "Accessibility Required"
-        case .hasRequired:
-            return "Ready - Icon Previews Disabled"
-        case .hasAll:
-            return "Ready"
-        }
-    }
-
     private func updateStatusIcon(for snapshot: PermissionSnapshot) {
         let symbolName: String
         switch snapshot.capabilityStatus {
@@ -177,16 +114,14 @@ final class MenuBarController {
         statusItem.button?.image?.isTemplate = true
     }
 
-    @objc private func showHiddenItems() {
+    @MainActor
+    private func showHiddenItems(attachedTo button: NSStatusBarButton? = nil) {
         sectionController.setHiddenSectionVisible(true)
         scheduleAutoRehideIfNeeded()
         rebuildMenu()
-    }
-
-    @objc private func hideHiddenItems() {
-        autoRehideTask?.cancel()
-        sectionController.setHiddenSectionVisible(false)
-        rebuildMenu()
+        if let button {
+            hiddenItemsHoverBarController?.show(attachedTo: button)
+        }
     }
 
     @MainActor
@@ -204,9 +139,7 @@ final class MenuBarController {
             return
         }
 
-        if let button = statusItem.button {
-            hiddenItemsHoverBarController?.show(attachedTo: button)
-        }
+        showHiddenItems(attachedTo: statusItem.button)
     }
 
     @objc private func openMainPanel() {

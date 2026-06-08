@@ -1,6 +1,8 @@
 import Foundation
+import os
 
 enum CoronaDebugLog {
+    private static let logger = Logger(subsystem: "com.ltz.corona", category: "debug")
     private static let queue = DispatchQueue(label: "com.ltz.corona.debug-log")
 
     static var fileURL: URL {
@@ -10,7 +12,7 @@ enum CoronaDebugLog {
 
     static func log(_ message: String) {
         let line = "[\(timestamp())] \(message)\n"
-        NSLog("CoronaDebug: %@", message)
+        logger.debug("\(message)")
         queue.async {
             do {
                 let directory = fileURL.deletingLastPathComponent()
@@ -26,7 +28,7 @@ enum CoronaDebugLog {
                     try line.write(to: fileURL, atomically: true, encoding: .utf8)
                 }
             } catch {
-                NSLog("CoronaDebugLog write failed: %@", String(describing: error))
+                logger.error("Debug log write failed: \(String(describing: error))")
             }
         }
     }
