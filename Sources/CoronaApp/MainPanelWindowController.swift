@@ -206,15 +206,15 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     var visibleRows: [Row] {
-        filteredRows.filter { $0.desiredSection == .visible }
+        filteredRows.filter { displaySection(for: $0) == .visible }
     }
 
     var hiddenRows: [Row] {
-        filteredRows.filter { $0.desiredSection == .hidden }
+        filteredRows.filter { displaySection(for: $0) == .hidden }
     }
 
     var alwaysHiddenRows: [Row] {
-        filteredRows.filter { $0.desiredSection == .alwaysHidden }
+        filteredRows.filter { displaySection(for: $0) == .alwaysHidden }
     }
 
     var hasRows: Bool {
@@ -320,7 +320,7 @@ final class MainPanelViewModel: ObservableObject {
     func move(uid: String, to section: MenuBarSection, at index: Int) {
         guard canMove(uid: uid, to: section) else { return }
         CoronaDebugLog.log("main.move uid=\(uid) section=\(section) index=\(index)")
-        draft.move(uid, to: section, at: index)
+        draft.move(uid, to: section, at: desiredInsertionIndex(section: section, displayedIndex: index))
         selectedUID = uid
         rebuildRows()
         persistAndApplyDraft(movedUID: uid)
@@ -352,6 +352,32 @@ final class MainPanelViewModel: ObservableObject {
         case .rightOf(let anchor):
             return rowUIDs.firstIndex(of: anchor).map { min($0 + 1, rowUIDs.count) } ?? rowUIDs.count
         }
+    }
+
+    private func desiredInsertionIndex(section: MenuBarSection, displayedIndex: Int) -> Int {
+        let displayedUIDs = filteredRows
+            .filter { displaySection(for: $0) == section }
+            .map(\.uid)
+        let targetOrder = draft.order[section]
+
+        if displayedIndex <= 0 {
+            return 0
+        }
+        if displayedIndex >= displayedUIDs.count {
+            return targetOrder.count
+        }
+
+        let previousUID = displayedUIDs[displayedIndex - 1]
+        if let previousIndex = targetOrder.firstIndex(of: previousUID) {
+            return targetOrder.index(after: previousIndex)
+        }
+
+        let nextUID = displayedUIDs[displayedIndex]
+        if let nextIndex = targetOrder.firstIndex(of: nextUID) {
+            return nextIndex
+        }
+
+        return targetOrder.count
     }
 
     func apply() {
@@ -559,6 +585,10 @@ final class MainPanelViewModel: ObservableObject {
         guard !MenuBarController.isCoronaSelfIdentifier(item.uid) else {
             return nil
         }
+        let displaySection = displaySection(
+            desiredSection: item.desiredSection,
+            physicalSection: item.physicalSection
+        )
         let placementDetail = placementDetail(
             desiredSection: item.desiredSection,
             physicalSection: item.physicalSection,
@@ -571,7 +601,7 @@ final class MainPanelViewModel: ObservableObject {
             owner: item.owner,
             detail: "#\(item.position)  \(placementDetail)  x \(Int(item.bounds.minX))-\(Int(item.bounds.maxX))",
             position: item.position,
-            isHidden: item.isHidden,
+            isHidden: displaySection != .visible,
             desiredSection: item.desiredSection,
             physicalSection: item.physicalSection,
             needsManualPlacement: item.needsApply,
@@ -583,6 +613,20 @@ final class MainPanelViewModel: ObservableObject {
             visualHeight: max(item.bounds.height, 1),
             isPixelPreview: item.isPixelPreview
         )
+    }
+
+    private func displaySection(for row: Row) -> MenuBarSection {
+        displaySection(desiredSection: row.desiredSection, physicalSection: row.physicalSection)
+    }
+
+    private func displaySection(
+        desiredSection: MenuBarSection,
+        physicalSection: MenuBarSection
+    ) -> MenuBarSection {
+        if physicalSection == .visible && desiredSection != .visible {
+            return .hidden
+        }
+        return physicalSection
     }
 
     private func shouldExpandMenuBarForRendering() -> Bool {

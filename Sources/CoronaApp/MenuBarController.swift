@@ -358,18 +358,52 @@ final class MenuBarController {
         )
         visualCapturePreviousVisibility = previousVisibility
 
+        sectionController.setHiddenSectionVisible(false)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(false)
+        }
+
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        let baselineSnapshot = try await cacheController.refresh()
+
         sectionController.setHiddenSectionVisible(true)
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        let hiddenSnapshot = try await cacheController.refresh()
+
+        var alwaysHiddenSnapshot: MenuBarSnapshot?
         if settings.enableAlwaysHiddenSection {
             sectionController.setAlwaysHiddenSectionVisible(true)
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            alwaysHiddenSnapshot = try await cacheController.refresh()
         }
 
-        try? await Task.sleep(nanoseconds: 180_000_000)
-        guard let boundary = sectionController.currentBoundary() else {
-            let snapshot = try await cacheController.refresh()
-            return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
+        let cache = stagedVisualCache(
+            baselineSnapshot: baselineSnapshot,
+            hiddenSnapshot: hiddenSnapshot,
+            alwaysHiddenSnapshot: alwaysHiddenSnapshot
+        )
+        CoronaDebugLog.log("visualCapture.staged baseline=\(baselineSnapshot.items.count) hiddenStage=\(hiddenSnapshot.items.count) alwaysStage=\(alwaysHiddenSnapshot?.items.count ?? 0) visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count)")
+        return cache
+    }
+
+    private func stagedVisualCache(
+        baselineSnapshot: MenuBarSnapshot,
+        hiddenSnapshot: MenuBarSnapshot,
+        alwaysHiddenSnapshot: MenuBarSnapshot?
+    ) -> ItemCache {
+        let visibleWindowIDs = Set(baselineSnapshot.items.map(\.windowID))
+        let hiddenItems = hiddenSnapshot.items.filter { !visibleWindowIDs.contains($0.windowID) }
+        let hiddenWindowIDs = Set(hiddenItems.map(\.windowID))
+        let alwaysHiddenItems = (alwaysHiddenSnapshot?.items ?? []).filter { item in
+            !visibleWindowIDs.contains(item.windowID) && !hiddenWindowIDs.contains(item.windowID)
         }
 
-        return try await cacheController.cache(boundary: boundary)
+        return ItemCache(
+            displayID: alwaysHiddenSnapshot?.displayID ?? hiddenSnapshot.displayID ?? baselineSnapshot.displayID,
+            visibleItems: baselineSnapshot.items,
+            hiddenItems: hiddenItems,
+            alwaysHiddenItems: alwaysHiddenItems
+        )
     }
 
     @MainActor
@@ -389,6 +423,7 @@ final class MenuBarController {
 
         sectionController.setHiddenSectionVisible(previousVisibility.hidden == .shown)
         if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionEnabled(true)
             sectionController.setAlwaysHiddenSectionVisible(previousVisibility.alwaysHidden == .shown)
         }
         rebuildMenu()
