@@ -52,6 +52,10 @@ public struct LayoutPlanner {
         currentOrder: SectionOrder,
         desiredOrder: SectionOrder
     ) -> LayoutMove? {
+        if let move = nextVisibleRestorationMove(currentOrder: currentOrder, desiredOrder: desiredOrder) {
+            return move
+        }
+
         for section in MenuBarSection.allCases {
             let current = currentOrder[section].filter { desiredOrder[section].contains($0) }
             let desired = desiredOrder[section]
@@ -62,6 +66,16 @@ public struct LayoutPlanner {
         }
 
         return nextCrossSectionMove(currentOrder: currentOrder, desiredOrder: desiredOrder)
+    }
+
+    private func nextVisibleRestorationMove(currentOrder: SectionOrder, desiredOrder: SectionOrder) -> LayoutMove? {
+        let currentSectionByUID = sectionMap(currentOrder)
+
+        for uid in desiredOrder.visible where currentSectionByUID[uid] != .visible {
+            return LayoutMove(itemUID: uid, target: .sectionBoundary(.visible))
+        }
+
+        return nil
     }
 
     private func normalizedNewItemsSection(_ preference: LayoutPreference) -> MenuBarSection {

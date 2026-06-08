@@ -21,7 +21,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var newItemsSection: NewItemsSection
     public var newItemsPlacement: NewItemsPlacement
     public var enableAlwaysHiddenSection: Bool
-    public var enableNotchOverflow: Bool
     public var enableScreenRecordingPreviews: Bool
     public var enableDiagnosticLogging: Bool
 
@@ -34,7 +33,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         newItemsSection: NewItemsSection = .visible,
         newItemsPlacement: NewItemsPlacement = .append,
         enableAlwaysHiddenSection: Bool = false,
-        enableNotchOverflow: Bool = true,
         enableScreenRecordingPreviews: Bool = false,
         enableDiagnosticLogging: Bool = false
     ) {
@@ -46,7 +44,6 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.newItemsSection = newItemsSection
         self.newItemsPlacement = newItemsPlacement
         self.enableAlwaysHiddenSection = enableAlwaysHiddenSection
-        self.enableNotchOverflow = enableNotchOverflow
         self.enableScreenRecordingPreviews = enableScreenRecordingPreviews
         self.enableDiagnosticLogging = enableDiagnosticLogging
     }

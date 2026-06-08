@@ -102,6 +102,7 @@ final class HiddenItemsHoverBarController {
         hideTask?.cancel()
         let panel = ensurePanel()
         model.refresh(on: screen)
+        panel.backgroundColor = model.menuBarBackgroundColor
 
         let width = min(max(model.replicaWidth, 1), screen.frame.width - 32)
         let height = model.replicaHeight
@@ -173,6 +174,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
     @Published private(set) var rows: [Row] = []
     @Published private(set) var revealingUID: String?
     @Published private(set) var triggerFrame: CGRect?
+    @Published private(set) var menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: nil)
 
     var replicaWidth: CGFloat {
         let contentWidth = rows.reduce(CGFloat.zero) { partialResult, row in
@@ -237,13 +239,19 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         guard permissionChecker.snapshot().canRunCoreFeatures else { return }
         do {
             let cache = targetScopedCache(try await visualCacheProvider(), on: screen)
+            menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: cache.displayID ?? screen?.displayID)
             let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
                 (item.tag.stableIdentifier, item)
             })
-            let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
+            let order = layoutStore.loadSavedSectionOrder()
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
             let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
                 .map(\.tag.stableIdentifier)
-                .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
+                .filter {
+                    !MenuBarController.isCoronaSelfIdentifier($0)
+                        && !MenuBarController.isLegacyAXGeneratedIdentifier($0)
+                }
             let savedHiddenUIDs = (order.hidden + order.alwaysHidden).filter { itemByUID[$0] != nil }
             rows = makeRows(
                 uids: mergedHiddenUIDs(saved: savedHiddenUIDs, physical: physicalHiddenUIDs),
@@ -265,6 +273,10 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     private func targetScopedCache(_ cache: ItemCache, on screen: NSScreen?) -> ItemCache {
         guard let screen else { return cache }
+        if let displayID = cache.displayID, screen.displayID != displayID {
+            CoronaDebugLog.log("hoverBar.targetScope skippedNonManagedScreen cacheDisplayID=\(displayID) screenDisplayID=\(screen.displayID)")
+            return cache
+        }
         let targetFrame = screen.frame
         let otherFrames = NSScreen.screens
             .map(\.frame)
@@ -306,7 +318,9 @@ final class HiddenItemsHoverBarModel: ObservableObject {
     }
 
     var hasSavedHiddenItems: Bool {
-        let order = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
+        let order = layoutStore.loadSavedSectionOrder()
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
         return !order.hidden.isEmpty || !rows.isEmpty
     }
 
@@ -355,6 +369,12 @@ final class HiddenItemsHoverBarModel: ObservableObject {
     }
 }
 
+private extension NSScreen {
+    var displayID: CGDirectDisplayID {
+        deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+    }
+}
+
 private struct HiddenItemsHoverBarView: View {
     @ObservedObject var model: HiddenItemsHoverBarModel
 
@@ -390,7 +410,7 @@ private struct HiddenItemsHoverBarView: View {
         }
         .frame(width: model.replicaWidth, height: model.replicaHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.clear)
+        .background(Color(nsColor: model.menuBarBackgroundColor))
         .clipShape(Rectangle())
         .overlay(
             Rectangle()

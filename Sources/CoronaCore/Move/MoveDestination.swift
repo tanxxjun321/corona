@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public enum MoveDestination: Codable, Equatable, Sendable {
@@ -6,7 +7,11 @@ public enum MoveDestination: Codable, Equatable, Sendable {
 }
 
 public extension MoveDestination {
-    func isSatisfied(for itemUID: String, in cache: ItemCache) -> Bool {
+    func isSatisfied(
+        for itemUID: String,
+        in cache: ItemCache,
+        tolerancePixels: CGFloat = 0
+    ) -> Bool {
         guard let movedItem = cache.item(withStableIdentifier: itemUID) else {
             return false
         }
@@ -16,12 +21,12 @@ public extension MoveDestination {
             guard let currentAnchor = cache.item(withStableIdentifier: anchor.tag.stableIdentifier) else {
                 return false
             }
-            return movedItem.bounds.midX < currentAnchor.bounds.midX
+            return movedItem.bounds.midX < currentAnchor.bounds.midX + tolerancePixels
         case .rightOfItem(let anchor):
             guard let currentAnchor = cache.item(withStableIdentifier: anchor.tag.stableIdentifier) else {
                 return false
             }
-            return movedItem.bounds.midX > currentAnchor.bounds.midX
+            return movedItem.bounds.midX > currentAnchor.bounds.midX - tolerancePixels
         }
     }
 }

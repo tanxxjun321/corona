@@ -30,24 +30,22 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
         }
 
         await Self.gate.acquire()
+        await SnapshotPollingGate.shared.acquireSuspension()
         CoronaDebugLog.log("executor.move gate acquired uid=\(item.tag.stableIdentifier)")
         defer {
             Task {
+                await SnapshotPollingGate.shared.releaseSuspension()
                 await Self.gate.release()
                 CoronaDebugLog.log("executor.move gate released uid=\(item.tag.stableIdentifier)")
             }
         }
 
         do {
-            if !skipInputPause {
-                try await Task.sleep(nanoseconds: Constants.inputPauseNanoseconds)
-            }
-
             let attempts = max(1, maxAttempts)
             var lastError: Error?
             for _ in 0..<attempts {
                 do {
-                    try await drag(item: item, to: destination)
+                    try await drag(item: item, to: destination, skipInputPause: skipInputPause)
                     CoronaDebugLog.log("executor.move drag posted uid=\(item.tag.stableIdentifier)")
                     return
                 } catch {
@@ -63,7 +61,11 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
         }
     }
 
-    private func drag(item: MenuBarItem, to destination: MoveDestination) async throws {
+    private func drag(
+        item: MenuBarItem,
+        to destination: MoveDestination,
+        skipInputPause: Bool
+    ) async throws {
         let source = CGPoint(x: item.bounds.midX, y: item.bounds.midY)
         let target = destinationPoint(for: destination, movingItemBounds: item.bounds, sourceY: source.y)
         CoronaDebugLog.log("executor.drag uid=\(item.tag.stableIdentifier) source=\(source.debugDescription) target=\(target.debugDescription)")
@@ -73,6 +75,7 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
         guard let eventSource = CGEventSource(stateID: .hidSystemState),
               let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: source, mouseButton: .left),
               let drag = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDragged, mouseCursorPosition: source, mouseButton: .left),
+              let hover = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: target, mouseButton: .left),
               let up = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp, mouseCursorPosition: target, mouseButton: .left) else {
             CoronaDebugLog.log("executor.drag failed createEvents uid=\(item.tag.stableIdentifier)")
             throw MoveExecutorError.destinationUnavailable
@@ -83,9 +86,11 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
 
         down.flags = .maskCommand
         drag.flags = .maskCommand
+        hover.flags = .maskCommand
         up.flags = .maskCommand
         configure(down, for: item)
         configure(drag, for: item)
+        configure(hover, for: item)
         configure(up, for: item)
 
         defer {
@@ -109,6 +114,13 @@ struct DirectMoveEventExecutor: MoveEventExecutor {
             drag.location = point
             drag.post(tap: .cghidEventTap)
             try await Task.sleep(nanoseconds: Constants.stepDelayNanoseconds)
+        }
+
+        hover.location = target
+        hover.post(tap: .cghidEventTap)
+        if !skipInputPause {
+            CoronaDebugLog.log("executor.drag hoverPause uid=\(item.tag.stableIdentifier) pauseNs=\(Constants.inputPauseNanoseconds)")
+            try await Task.sleep(nanoseconds: Constants.inputPauseNanoseconds)
         }
 
         up.post(tap: .cghidEventTap)

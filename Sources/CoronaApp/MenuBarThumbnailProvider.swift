@@ -71,20 +71,37 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
         let size = NSSize(width: width, height: height)
         let image = NSImage(size: size)
         let title = item.title ?? item.tag.title
+        let appIcon = applicationIcon(for: item)
 
         image.lockFocus()
         NSColor.clear.setFill()
         NSRect(origin: .zero, size: size).fill()
 
-        if width >= 34, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let appIcon {
+            drawAppIcon(appIcon, in: NSRect(origin: .zero, size: size))
+        } else if width >= 34, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             drawMenuBarTitle(title, in: NSRect(origin: .zero, size: size))
         } else {
             drawFallbackGlyph(in: NSRect(origin: .zero, size: size), description: title)
         }
 
         image.unlockFocus()
-        image.isTemplate = true
+        image.isTemplate = appIcon == nil
         return image
+    }
+
+    private func applicationIcon(for item: MenuBarItem) -> NSImage? {
+        if let sourcePID = item.sourcePID,
+           let icon = NSRunningApplication(processIdentifier: sourcePID)?.icon {
+            return icon
+        }
+        if let icon = NSRunningApplication(processIdentifier: item.ownerPID)?.icon {
+            return icon
+        }
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.tag.namespace) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return nil
     }
 
     private func hasVisibleContent(_ image: CGImage) -> Bool {
@@ -132,6 +149,17 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
             height: min(textSize.height, rect.height)
         )
         title.draw(in: textRect, withAttributes: attributes)
+    }
+
+    private func drawAppIcon(_ icon: NSImage, in rect: NSRect) {
+        let iconSide = min(rect.width, rect.height, 22)
+        let iconRect = NSRect(
+            x: rect.midX - iconSide / 2,
+            y: rect.midY - iconSide / 2,
+            width: iconSide,
+            height: iconSide
+        )
+        icon.draw(in: iconRect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private func drawFallbackGlyph(in rect: NSRect, description: String) {

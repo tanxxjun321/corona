@@ -45,8 +45,21 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         guard candidate.ownerPID != currentProcessID else { return false }
         guard candidate.ownerName != "Window Server", candidate.title != "Menubar" else { return false }
         guard bundleIdentifierForPID(candidate.ownerPID) != mainBundleIdentifier else { return false }
+        guard !isGenericControlCenterContainer(candidate) else { return false }
+        guard isStatusItemLayer(candidate.layer) else { return false }
         guard isStatusItemSized(candidate.bounds, displayFrames: displayFrames) else { return false }
         return isInMenuBarVerticalBand(candidate.bounds, displayFrames: displayFrames)
+    }
+
+    private func isGenericControlCenterContainer(_ candidate: MenuBarWindowCandidate) -> Bool {
+        guard candidate.title?.isEmpty ?? true else { return false }
+        guard candidate.bounds.height < 30 else { return false }
+        let ownerName = candidate.ownerName ?? ""
+        return ownerName == "Control Center" || ownerName == "控制中心"
+    }
+
+    private func isStatusItemLayer(_ layer: Int) -> Bool {
+        layer >= 20 && layer <= 30
     }
 
     private func isStatusItemSized(_ bounds: CGRect, displayFrames: [CGRect]) -> Bool {
@@ -60,13 +73,8 @@ public struct MenuBarWindowCandidateFilter: Sendable {
 
     private func isInMenuBarVerticalBand(_ bounds: CGRect, displayFrames: [CGRect]) -> Bool {
         displayFrames.contains { frame in
-            let verticalTolerance: CGFloat = 96
-            return abs(bounds.minY - frame.minY) <= verticalTolerance ||
-                abs(bounds.maxY - frame.maxY) <= verticalTolerance ||
-                (bounds.midY >= frame.minY - verticalTolerance &&
-                    bounds.midY <= frame.minY + verticalTolerance) ||
-                (bounds.midY >= frame.maxY - verticalTolerance &&
-                    bounds.midY <= frame.maxY + verticalTolerance)
+            let verticalTolerance: CGFloat = 8
+            return abs(bounds.minY - frame.minY) <= verticalTolerance
         }
     }
 }

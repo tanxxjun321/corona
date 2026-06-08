@@ -16,10 +16,6 @@ struct MenuBarVisualItem: Identifiable {
     var thumbnail: NSImage
     var isPixelPreview: Bool
 
-    var isHidden: Bool {
-        desiredSection != .visible
-    }
-
     var needsApply: Bool {
         isMovable && desiredSection != physicalSection
     }
@@ -27,18 +23,6 @@ struct MenuBarVisualItem: Identifiable {
 
 struct MenuBarVisualSnapshot {
     var items: [MenuBarVisualItem]
-
-    var visibleItems: [MenuBarVisualItem] {
-        items.filter { $0.desiredSection == .visible }
-    }
-
-    var hiddenItems: [MenuBarVisualItem] {
-        items.filter { $0.desiredSection == .hidden }
-    }
-
-    var alwaysHiddenItems: [MenuBarVisualItem] {
-        items.filter { $0.desiredSection == .alwaysHidden }
-    }
 }
 
 @MainActor
@@ -51,9 +35,25 @@ struct MenuBarVisualSnapshotProvider {
     ) -> MenuBarVisualSnapshot {
         let physicalSectionByUID = Self.sectionMap(for: cache)
         let desiredSectionByUID = Self.sectionMap(for: desiredOrder)
-        let orderedItems = cache.allItems
-            .filter { !MenuBarController.isCoronaSelfIdentifier($0.tag.stableIdentifier) }
+        let itemsByUID = Dictionary(
+            uniqueKeysWithValues: cache.allItems
+                .filter { !MenuBarController.isCoronaSelfIdentifier($0.tag.stableIdentifier) }
+                .map { ($0.tag.stableIdentifier, $0) }
+        )
+        let desiredUIDs = desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden
+        var emittedUIDs = Set<String>()
+        var orderedItems: [MenuBarItem] = []
+
+        for uid in desiredUIDs {
+            guard let item = itemsByUID[uid], !emittedUIDs.contains(uid) else { continue }
+            orderedItems.append(item)
+            emittedUIDs.insert(uid)
+        }
+
+        let newItems = itemsByUID.values
+            .filter { !emittedUIDs.contains($0.tag.stableIdentifier) }
             .sorted(by: Self.displaySort)
+        orderedItems.append(contentsOf: newItems)
 
         let visualItems = orderedItems.enumerated().map { index, item in
             let uid = item.tag.stableIdentifier

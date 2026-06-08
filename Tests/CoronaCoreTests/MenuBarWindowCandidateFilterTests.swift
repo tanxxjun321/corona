@@ -50,6 +50,84 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
         XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1728, height: 1117)]))
     }
 
+    func testRejectsApplicationChromeWindowInMenuBarBand() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "Example",
+            title: nil,
+            bounds: CGRect(x: 0, y: 0, width: 1512, height: 37),
+            layer: 0
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsSmallLayerZeroWindowInMenuBarBand() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "Example",
+            title: nil,
+            bounds: CGRect(x: 480, y: 0, width: 32, height: 37),
+            layer: 0
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsGenericControlCenterContainer() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "控制中心",
+            title: nil,
+            bounds: CGRect(x: 840, y: 0, width: 33, height: 24),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testAcceptsNamedControlCenterModule() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "控制中心",
+            title: "WiFi",
+            bounds: CGRect(x: 1296, y: 0, width: 38, height: 24),
+            layer: 25
+        )
+
+        XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsSmallWindowNearButBelowMenuBar() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "Example",
+            title: "Floating Widget",
+            bounds: CGRect(x: 351, y: 44, width: 14, height: 16),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1728, height: 1117)]))
+    }
+
+    func testRejectsSmallWindowNearBottomEdge() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "CursorUIViewService",
+            title: "CursorUIViewService",
+            bounds: CGRect(x: 0, y: 928, width: 54, height: 54),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
     func testRejectsWindowServerMenubarWindow() {
         let filter = makeFilter()
         let candidate = MenuBarWindowCandidate(

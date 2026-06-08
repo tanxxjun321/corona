@@ -25,6 +25,7 @@ final class StatusSectionController {
         configureControlItem(hiddenControlItem)
         configureControlItem(alwaysHiddenControlItem)
         apply(visibility: hiddenVisibility, to: hiddenControlItem)
+        alwaysHiddenControlItem.isVisible = false
     }
 
     func setHiddenSectionVisible(_ visible: Bool) {
@@ -58,17 +59,32 @@ final class StatusSectionController {
     }
 
     func currentBoundary() -> SectionBoundary? {
-        guard let hiddenBounds = statusItemBounds(hiddenControlItem) else {
+        guard let hiddenBounds = statusItemBounds(hiddenControlItem),
+              isUsableBoundaryBounds(hiddenBounds) else {
             return nil
+        }
+
+        let alwaysHiddenBounds: CGRect?
+        if alwaysHiddenControlItem.isVisible {
+            guard let bounds = statusItemBounds(alwaysHiddenControlItem),
+                  isUsableBoundaryBounds(bounds),
+                  isDistinctBoundary(bounds, from: hiddenBounds) else {
+                return nil
+            }
+            alwaysHiddenBounds = bounds
+        } else {
+            alwaysHiddenBounds = nil
         }
 
         return SectionBoundary(
             hiddenControlBounds: hiddenBounds,
-            alwaysHiddenControlBounds: alwaysHiddenControlItem.isVisible ? statusItemBounds(alwaysHiddenControlItem) : nil
+            alwaysHiddenControlBounds: alwaysHiddenBounds
         )
     }
 
     func boundaryItems() -> [MenuBarSection: MenuBarItem] {
+        guard currentBoundary() != nil else { return [:] }
+
         var result: [MenuBarSection: MenuBarItem] = [:]
         if let hidden = controlItem(hiddenControlItem, title: "hiddenControl") {
             result[.visible] = hidden
@@ -106,6 +122,14 @@ final class StatusSectionController {
 
     private func statusItemBounds(_ item: NSStatusItem) -> CGRect? {
         item.button?.window?.frame
+    }
+
+    private func isUsableBoundaryBounds(_ bounds: CGRect) -> Bool {
+        !bounds.isNull && !bounds.isInfinite && bounds.width > 0 && bounds.height > 0
+    }
+
+    private func isDistinctBoundary(_ lhs: CGRect, from rhs: CGRect) -> Bool {
+        abs(lhs.midX - rhs.midX) > 0.5
     }
 
     private func controlItem(_ item: NSStatusItem, title: String) -> MenuBarItem? {

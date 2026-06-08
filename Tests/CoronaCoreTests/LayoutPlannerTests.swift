@@ -35,6 +35,26 @@ final class LayoutPlannerTests: XCTestCase {
         XCTAssertEqual(order.hidden, ["app:Old", "app:New"])
     }
 
+    func testMergedOrderKeepsSavedHiddenIntentWhenPhysicalItemIsVisible() {
+        let cache = ItemCache(
+            displayID: nil,
+            visibleItems: [makeItem(windowID: 1, namespace: "app", title: "SavedHidden", sourcePID: 10)],
+            hiddenItems: [],
+            alwaysHiddenItems: []
+        )
+        let preference = LayoutPreference(
+            savedOrder: SectionOrder(hidden: ["app:SavedHidden"]),
+            newItemsSection: .visible,
+            newItemsPlacement: .append,
+            alwaysHiddenEnabled: false
+        )
+
+        let order = LayoutPlanner().mergedOrder(cache: cache, preference: preference)
+
+        XCTAssertEqual(order.visible, [])
+        XCTAssertEqual(order.hidden, ["app:SavedHidden"])
+    }
+
     func testAlwaysHiddenNewItemsFallbackToHiddenWhenDisabled() {
         let cache = ItemCache(
             displayID: nil,
@@ -83,6 +103,15 @@ final class LayoutPlannerTests: XCTestCase {
     func testNextCrossSectionMoveToVisibleUsesVisibleBoundary() {
         let current = SectionOrder(visible: ["a"], hidden: ["b"])
         let desired = SectionOrder(visible: ["a", "b"], hidden: [])
+
+        let move = LayoutPlanner().nextMove(currentOrder: current, desiredOrder: desired)
+
+        XCTAssertEqual(move, LayoutMove(itemUID: "b", target: .sectionBoundary(.visible)))
+    }
+
+    func testVisibleRestorationTakesPriorityOverVisibleReordering() {
+        let current = SectionOrder(visible: ["c", "a"], hidden: ["b"])
+        let desired = SectionOrder(visible: ["a", "b", "c"], hidden: [])
 
         let move = LayoutPlanner().nextMove(currentOrder: current, desiredOrder: desired)
 

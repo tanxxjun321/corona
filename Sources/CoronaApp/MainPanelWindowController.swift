@@ -28,9 +28,15 @@ private enum MenuBarMenuSuppressor {
 }
 
 final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
+    private enum Constants {
+        static let initialRefreshDelayNanoseconds: UInt64 = 250_000_000
+        static let liveRefreshIntervalNanoseconds: UInt64 = 1_000_000_000
+    }
+
     private let model: MainPanelViewModel
     private let settingsModel: SettingsViewModel
     private var refreshTask: Task<Void, Never>?
+    private var liveRefreshTask: Task<Void, Never>?
 
     init(
         cacheController: MenuBarCacheController,
@@ -77,6 +83,7 @@ final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         refreshTask?.cancel()
+        liveRefreshTask?.cancel()
     }
 
     @available(*, unavailable)
@@ -87,16 +94,20 @@ final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
     func show() {
         guard let window else { return }
         refreshTask?.cancel()
+        liveRefreshTask?.cancel()
         model.prepareForPresentation()
+        model.setMenuBarAppearanceScreen(window.screen)
         MenuBarMenuSuppressor.suppress()
         NSApplication.shared.setActivationPolicy(.regular)
         window.center()
+        model.setMenuBarAppearanceScreen(window.screen)
         window.makeKeyAndOrderFront(nil)
         NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         refreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: Constants.initialRefreshDelayNanoseconds)
             guard let self, !Task.isCancelled else { return }
             self.model.refresh()
+            self.startLiveRefresh()
         }
         settingsModel.refreshPermissions()
     }
@@ -110,7 +121,7 @@ final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
         settingsModel.refreshPermissions()
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: Constants.initialRefreshDelayNanoseconds)
             guard let self, !Task.isCancelled else { return }
             self.model.refresh()
         }
@@ -118,8 +129,31 @@ final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         refreshTask?.cancel()
+        liveRefreshTask?.cancel()
+        liveRefreshTask = nil
         MenuBarMenuSuppressor.restore()
         NSApplication.shared.setActivationPolicy(.accessory)
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        model.setMenuBarAppearanceScreen(window?.screen)
+    }
+
+    func windowDidChangeScreen(_ notification: Notification) {
+        model.setMenuBarAppearanceScreen(window?.screen)
+    }
+
+    private func startLiveRefresh() {
+        liveRefreshTask?.cancel()
+        liveRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Constants.liveRefreshIntervalNanoseconds)
+                guard let self, !Task.isCancelled else { return }
+                guard self.window?.isVisible == true else { continue }
+                guard self.model.selectedTab == .organize else { continue }
+                self.model.refreshLive()
+            }
+        }
     }
 }
 
@@ -130,6 +164,26 @@ enum MainPanelTab: Hashable {
 
 @MainActor
 final class MainPanelViewModel: ObservableObject {
+    enum ApplyStatus: Equatable {
+        case ready
+        case pendingMove
+        case unmanageable
+        case missing
+
+        var label: String {
+            switch self {
+            case .ready:
+                return "Ready"
+            case .pendingMove:
+                return "Pending move"
+            case .unmanageable:
+                return "Unmanageable"
+            case .missing:
+                return "Missing"
+            }
+        }
+    }
+
     struct Row: Identifiable, Equatable {
         var id: String { uid }
         var uid: String
@@ -140,6 +194,7 @@ final class MainPanelViewModel: ObservableObject {
         var isHidden: Bool
         var desiredSection: MenuBarSection
         var physicalSection: MenuBarSection
+        var applyStatus: ApplyStatus
         var needsManualPlacement: Bool
         var isMovable: Bool
         var canHide: Bool
@@ -156,6 +211,7 @@ final class MainPanelViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var statusMessage: String?
     @Published private(set) var canRunCoreFeatures = false
+    @Published private(set) var menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: nil)
     @Published var selectedTab: MainPanelTab = .organize
     @Published var searchText = ""
     @Published var selectedUID: String?
@@ -177,9 +233,11 @@ final class MainPanelViewModel: ObservableObject {
     private var physicalSectionByUID: [String: MenuBarSection] = [:]
     private var pendingAutoApply = false
     private var pendingAutoApplyUID: String?
+    private var isRefreshing = false
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
     private var didExpandMenuBarForRendering = false
+    private var menuBarAppearanceDisplayID: CGDirectDisplayID?
 
     init(
         cacheController: MenuBarCacheController,
@@ -206,15 +264,15 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     var visibleRows: [Row] {
-        filteredRows.filter { displaySection(for: $0) == .visible }
+        filteredRows.filter { $0.desiredSection == .visible }
     }
 
     var hiddenRows: [Row] {
-        filteredRows.filter { displaySection(for: $0) == .hidden }
+        filteredRows.filter { $0.desiredSection == .hidden }
     }
 
     var alwaysHiddenRows: [Row] {
-        filteredRows.filter { displaySection(for: $0) == .alwaysHidden }
+        filteredRows.filter { $0.desiredSection == .alwaysHidden }
     }
 
     var hasRows: Bool {
@@ -230,11 +288,22 @@ final class MainPanelViewModel: ObservableObject {
         refresh(showLoading: true)
     }
 
+    func refreshLive() {
+        guard !isApplying else { return }
+        refresh(showLoading: false)
+    }
+
     func prepareForPresentation() {
         didExpandMenuBarForRendering = false
     }
 
+    func setMenuBarAppearanceScreen(_ screen: NSScreen?) {
+        menuBarAppearanceDisplayID = MenuBarAppearanceSampler.displayID(for: screen)
+        menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: menuBarAppearanceDisplayID)
+    }
+
     private func refresh(showLoading: Bool) {
+        guard !isRefreshing else { return }
         let snapshot = permissionChecker.snapshot()
         canRunCoreFeatures = snapshot.canRunCoreFeatures
         statusMessage = snapshot.canRunCoreFeatures ? nil : "Accessibility permission is required before Corona can scan or move menu bar items."
@@ -247,8 +316,15 @@ final class MainPanelViewModel: ObservableObject {
         if showLoading {
             isLoading = true
         }
+        isRefreshing = true
         errorMessage = nil
         Task {
+            defer {
+                isRefreshing = false
+                if showLoading {
+                    isLoading = false
+                }
+            }
             do {
                 let cache = try await currentCache()
                 CoronaDebugLog.log("main.refresh cache visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count) all=\(cache.allItems.count)")
@@ -265,12 +341,16 @@ final class MainPanelViewModel: ObservableObject {
                     hiddenItems: cache.hiddenItems.filter { !Self.isCoronaSelfItem($0) },
                     alwaysHiddenItems: cache.alwaysHiddenItems.filter { !Self.isCoronaSelfItem($0) }
                 )
+                menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: menuBarAppearanceDisplayID ?? cache.displayID)
                 positionByUID = Self.positionMap(for: manageableItems)
                 physicalSectionByUID = Self.sectionMap(for: cache)
                 let settings = settingsStore.load()
                 newItemsSection = MenuBarSection(settings.newItemsSection)
                 newItemsPlacement = settings.newItemsPlacement
-                draft = LayoutDraft(order: availableOrder(preferredOrder(cache: cache).removingCoronaSelfItems()))
+                let preferredOrder = organizerOrder(cache: physicalCache, settings: settings)
+                let sanitizedOrder = availableOrder(preferredOrder)
+                pruneUnavailableSavedItems(preferredOrder: preferredOrder, sanitizedOrder: sanitizedOrder)
+                draft = LayoutDraft(order: sanitizedOrder)
                 rebuildRows()
                 CoronaDebugLog.log("main.refresh draft visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
                 if selectedUID == nil || rows.contains(where: { $0.uid == selectedUID }) == false {
@@ -284,9 +364,6 @@ final class MainPanelViewModel: ObservableObject {
                 errorMessage = String(describing: error)
             }
             visualCacheCleanup()
-            if showLoading {
-                isLoading = false
-            }
         }
     }
 
@@ -327,7 +404,11 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     func moveNewItemsMarker(to section: MenuBarSection, at index: Int) {
-        let sanitizedOrder = availableOrder(draft.order.removingCoronaSelfItems())
+        let sanitizedOrder = availableOrder(
+            draft.order
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+        )
         let placement = newItemsPlacement(for: section, index: index, order: sanitizedOrder)
         var settings = settingsStore.load()
         settings.newItemsSection = NewItemsSection(section)
@@ -356,7 +437,7 @@ final class MainPanelViewModel: ObservableObject {
 
     private func desiredInsertionIndex(section: MenuBarSection, displayedIndex: Int) -> Int {
         let displayedUIDs = filteredRows
-            .filter { displaySection(for: $0) == section }
+            .filter { $0.desiredSection == section }
             .map(\.uid)
         let targetOrder = draft.order[section]
 
@@ -407,7 +488,11 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func persistDraft() -> SectionOrder {
-        let sanitizedOrder = availableOrder(draft.order.removingCoronaSelfItems())
+        let sanitizedOrder = availableOrder(
+            draft.order
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+        )
         draft = LayoutDraft(order: sanitizedOrder)
         layoutStore.saveSavedSectionOrder(sanitizedOrder)
         layoutStore.saveKnownItemIdentifiers(Set(sanitizedOrder.visible + sanitizedOrder.hidden + sanitizedOrder.alwaysHidden))
@@ -434,7 +519,11 @@ final class MainPanelViewModel: ObservableObject {
             CoronaDebugLog.log("main.autoApply result=\(result.statusTitle)")
 
             if pendingAutoApply {
-                orderForStatus = availableOrder(draft.order.removingCoronaSelfItems())
+                orderForStatus = availableOrder(
+                    draft.order
+                        .removingCoronaSelfItems()
+                        .removingLegacyAXGeneratedItems()
+                )
                 uidForApply = pendingAutoApplyUID
                 CoronaDebugLog.log("main.autoApply continueWithPending visible=\(orderForStatus.visible) hidden=\(orderForStatus.hidden) alwaysHidden=\(orderForStatus.alwaysHidden)")
                 continue
@@ -490,10 +579,45 @@ final class MainPanelViewModel: ObservableObject {
         return .rightOf(uids[index - 1])
     }
 
-    private func preferredOrder(cache: ItemCache) -> SectionOrder {
-        let savedOrder = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-        let currentOrder = SectionOrder(cache: cache).removingCoronaSelfItems()
-        return organizerOrder(savedOrder: savedOrder, currentOrder: currentOrder)
+    private func physicalOrder(cache: ItemCache) -> SectionOrder {
+        SectionOrder(cache: cache)
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
+    }
+
+    private func organizerOrder(cache: ItemCache, settings: AppSettings) -> SectionOrder {
+        let savedOrder = layoutStore.loadSavedSectionOrder()
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
+        let currentOrder = physicalOrder(cache: cache)
+
+        guard !savedOrder.isEmpty else {
+            return currentOrder
+        }
+
+        return LayoutPlanner().mergedOrder(
+            cache: cache,
+            preference: LayoutPreference(
+                savedOrder: savedOrder,
+                newItemsSection: MenuBarSection(settings.newItemsSection),
+                newItemsPlacement: settings.newItemsPlacement,
+                alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
+            )
+        )
+        .removingCoronaSelfItems()
+        .removingLegacyAXGeneratedItems()
+    }
+
+    private func pruneUnavailableSavedItems(preferredOrder: SectionOrder, sanitizedOrder: SectionOrder) {
+        let unavailable = unavailableOrder(preferredOrder)
+        guard !unavailable.isEmpty else { return }
+
+        layoutStore.saveSavedSectionOrder(sanitizedOrder)
+        layoutStore.saveKnownItemIdentifiers(Set(sanitizedOrder.visible + sanitizedOrder.hidden + sanitizedOrder.alwaysHidden))
+        for uid in unavailable.visible + unavailable.hidden + unavailable.alwaysHidden {
+            layoutStore.savePendingRelocation(nil, for: uid)
+        }
+        CoronaDebugLog.log("main.refresh prunedUnavailable visible=\(unavailable.visible) hidden=\(unavailable.hidden) alwaysHidden=\(unavailable.alwaysHidden)")
     }
 
     private func layoutPreference() -> LayoutPreference {
@@ -507,12 +631,25 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func rebuildRows() {
-        let sanitizedOrder = availableOrder(draft.order.removingCoronaSelfItems())
+        let sanitizedOrder = availableOrder(
+            draft.order
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+        )
         draft = LayoutDraft(order: sanitizedOrder)
         rows = visualRows(for: sanitizedOrder)
         if let selectedUID, rows.contains(where: { $0.uid == selectedUID }) == false {
             self.selectedUID = rows.first?.uid
         }
+    }
+
+    private func unavailableOrder(_ order: SectionOrder) -> SectionOrder {
+        let availableUIDs = Set(itemByUID.keys)
+        return SectionOrder(
+            visible: order.visible.filter { !availableUIDs.contains($0) },
+            hidden: order.hidden.filter { !availableUIDs.contains($0) },
+            alwaysHidden: order.alwaysHidden.filter { !availableUIDs.contains($0) }
+        )
     }
 
     private func availableOrder(_ order: SectionOrder) -> SectionOrder {
@@ -535,46 +672,6 @@ final class MainPanelViewModel: ObservableObject {
         return result
     }
 
-    private func savedIntentOrder(savedOrder: SectionOrder, currentOrder: SectionOrder) -> SectionOrder {
-        let currentUIDs = Set(currentOrder.visible + currentOrder.hidden + currentOrder.alwaysHidden)
-        let savedUIDs = Set(savedOrder.visible + savedOrder.hidden + savedOrder.alwaysHidden)
-        var result = SectionOrder(
-            visible: savedOrder.visible.filter { currentUIDs.contains($0) },
-            hidden: savedOrder.hidden.filter { currentUIDs.contains($0) },
-            alwaysHidden: savedOrder.alwaysHidden.filter { currentUIDs.contains($0) }
-        )
-
-        for section in MenuBarSection.allCases {
-            for uid in currentOrder[section] where !savedUIDs.contains(uid) {
-                result[section].append(uid)
-            }
-        }
-        return result
-    }
-
-    private func organizerOrder(savedOrder: SectionOrder, currentOrder: SectionOrder) -> SectionOrder {
-        let currentUIDs = Set(currentOrder.visible + currentOrder.hidden + currentOrder.alwaysHidden)
-        let savedHiddenUIDs = Set(savedOrder.hidden + savedOrder.alwaysHidden)
-        var result = SectionOrder(
-            visible: currentOrder.visible.filter { !savedHiddenUIDs.contains($0) },
-            hidden: savedOrder.hidden.filter { currentUIDs.contains($0) },
-            alwaysHidden: savedOrder.alwaysHidden.filter { currentUIDs.contains($0) }
-        )
-
-        for uid in currentOrder.hidden where !result.hidden.contains(uid) && !result.alwaysHidden.contains(uid) {
-            result.hidden.append(uid)
-        }
-        for uid in currentOrder.alwaysHidden where !result.alwaysHidden.contains(uid) && !result.hidden.contains(uid) {
-            result.alwaysHidden.append(uid)
-        }
-
-        let assignedUIDs = Set(result.visible + result.hidden + result.alwaysHidden)
-        for uid in currentOrder.visible where !assignedUIDs.contains(uid) {
-            result.visible.append(uid)
-        }
-        return result
-    }
-
     private func visualRows(for order: SectionOrder) -> [Row] {
         visualSnapshotProvider.snapshot(cache: physicalCache, desiredOrder: order)
             .items
@@ -585,13 +682,11 @@ final class MainPanelViewModel: ObservableObject {
         guard !MenuBarController.isCoronaSelfIdentifier(item.uid) else {
             return nil
         }
-        let displaySection = displaySection(
-            desiredSection: item.desiredSection,
-            physicalSection: item.physicalSection
-        )
+        let applyStatus = applyStatus(for: item)
         let placementDetail = placementDetail(
             desiredSection: item.desiredSection,
             physicalSection: item.physicalSection,
+            applyStatus: applyStatus,
             canReorder: item.isMovable,
             canHide: item.canHide
         )
@@ -601,9 +696,10 @@ final class MainPanelViewModel: ObservableObject {
             owner: item.owner,
             detail: "#\(item.position)  \(placementDetail)  x \(Int(item.bounds.minX))-\(Int(item.bounds.maxX))",
             position: item.position,
-            isHidden: displaySection != .visible,
+            isHidden: item.desiredSection != .visible,
             desiredSection: item.desiredSection,
             physicalSection: item.physicalSection,
+            applyStatus: applyStatus,
             needsManualPlacement: item.needsApply,
             isMovable: item.isMovable,
             canHide: item.canHide,
@@ -615,18 +711,12 @@ final class MainPanelViewModel: ObservableObject {
         )
     }
 
-    private func displaySection(for row: Row) -> MenuBarSection {
-        displaySection(desiredSection: row.desiredSection, physicalSection: row.physicalSection)
-    }
-
-    private func displaySection(
-        desiredSection: MenuBarSection,
-        physicalSection: MenuBarSection
-    ) -> MenuBarSection {
-        if physicalSection == .visible && desiredSection != .visible {
-            return .hidden
+    private func applyStatus(for item: MenuBarVisualItem) -> ApplyStatus {
+        guard item.isMovable else { return .unmanageable }
+        if item.desiredSection != item.physicalSection {
+            return .pendingMove
         }
-        return physicalSection
+        return .ready
     }
 
     private func shouldExpandMenuBarForRendering() -> Bool {
@@ -665,21 +755,22 @@ final class MainPanelViewModel: ObservableObject {
     private func placementDetail(
         desiredSection: MenuBarSection,
         physicalSection: MenuBarSection,
+        applyStatus: ApplyStatus,
         canReorder: Bool,
         canHide: Bool
     ) -> String {
-        guard canReorder else { return "Locked: cannot be reordered" }
-        guard desiredSection == .visible || canHide else { return "Cannot be hidden" }
+        guard canReorder else { return "\(applyStatus.label): cannot be reordered" }
+        guard desiredSection == .visible || canHide else { return "\(ApplyStatus.unmanageable.label): cannot be hidden" }
         guard desiredSection != physicalSection else {
-            return "Ready  desired \(desiredSection.label)  physical \(physicalSection.label)"
+            return "\(applyStatus.label)  desired \(desiredSection.label)  physical \(physicalSection.label)"
         }
         switch (desiredSection, physicalSection) {
         case (.visible, _):
-            return "Needs manual placement: drag right of Corona"
+            return "\(applyStatus.label): drag right of Corona"
         case (_, .visible):
-            return "Needs manual placement: drag left of Corona"
+            return "\(applyStatus.label): drag left of Corona"
         default:
-            return "Needs manual placement: desired \(desiredSection.label), physical \(physicalSection.label)"
+            return "\(applyStatus.label): desired \(desiredSection.label), physical \(physicalSection.label)"
         }
     }
 
@@ -871,7 +962,7 @@ private struct PreviewSection: View {
             GeometryReader { geometry in
                 let rowUIDs = rows.map(\.uid)
                 ZStack(alignment: .leading) {
-                    MenuBarRailBackground()
+                    MenuBarRailBackground(color: model.menuBarBackgroundColor)
                     ScrollView(.horizontal) {
                         HStack(spacing: 0) {
                             InsertDropZone(
@@ -1061,9 +1152,11 @@ private struct NewItemsMarkerView: View {
 }
 
 private struct MenuBarRailBackground: View {
+    var color: NSColor
+
     var body: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.72))
+            .fill(Color(nsColor: color))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.primary.opacity(0.12), lineWidth: 1)
@@ -1105,10 +1198,18 @@ private struct PreviewChip: View {
 
     @ViewBuilder
     private var statusIndicator: some View {
-        if !row.isMovable || row.needsManualPlacement {
-            Image(systemName: !row.isMovable ? "lock.fill" : "exclamationmark.triangle.fill")
+        switch row.applyStatus {
+        case .ready:
+            EmptyView()
+        case .pendingMove:
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(!row.isMovable ? Color.secondary : Color.orange)
+                .foregroundStyle(Color.orange)
+                .offset(x: 3, y: -3)
+        case .unmanageable, .missing:
+            Image(systemName: row.applyStatus == .missing ? "questionmark.square.fill" : "lock.fill")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(Color.secondary)
                 .offset(x: 3, y: -3)
         }
     }
@@ -1204,9 +1305,9 @@ private struct MainPanelRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            if row.needsManualPlacement {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+            if row.applyStatus != .ready {
+                Image(systemName: row.applyStatus == .pendingMove ? "exclamationmark.triangle" : "lock")
+                    .foregroundStyle(row.applyStatus == .pendingMove ? .orange : .secondary)
                     .help(row.detail)
             }
             Toggle("Hidden", isOn: Binding(

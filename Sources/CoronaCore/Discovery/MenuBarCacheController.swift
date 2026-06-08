@@ -21,7 +21,9 @@ public actor MenuBarCacheController {
     }
 
     public func refresh() async throws -> MenuBarSnapshot {
-        let rawSnapshot = try await provider.snapshot()
+        let rawSnapshot = try await SnapshotPollingGate.shared.withSnapshotAccess {
+            try await provider.snapshot()
+        }
         let assignedItems = identityAssigner.assignInstanceIndexes(to: rawSnapshot.items)
         let snapshot = MenuBarSnapshot(displayID: rawSnapshot.displayID, items: assignedItems)
         cachedSnapshot = snapshot

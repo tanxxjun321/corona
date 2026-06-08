@@ -24,9 +24,20 @@ public struct ItemCacheBuilder {
 
         return ItemCache(
             displayID: snapshot.displayID,
-            visibleItems: visible,
-            hiddenItems: hidden,
-            alwaysHiddenItems: alwaysHidden
+            visibleItems: visible.sortedByMenuBarPosition(),
+            hiddenItems: hidden.sortedByMenuBarPosition(),
+            alwaysHiddenItems: alwaysHidden.sortedByMenuBarPosition()
         )
+    }
+}
+
+private extension Array where Element == MenuBarItem {
+    func sortedByMenuBarPosition() -> [MenuBarItem] {
+        sorted { lhs, rhs in
+            if abs(lhs.bounds.minX - rhs.bounds.minX) > 0.5 {
+                return lhs.bounds.minX < rhs.bounds.minX
+            }
+            return lhs.windowID < rhs.windowID
+        }
     }
 }

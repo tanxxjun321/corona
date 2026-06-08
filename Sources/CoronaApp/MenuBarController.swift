@@ -26,8 +26,9 @@ final class MenuBarController {
     ) {
         self.settingsStore = settingsStore
         self.permissionChecker = permissionChecker
-        self.sectionController = StatusSectionController()
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.sectionController = StatusSectionController()
+        self.sectionController.ensureSpacerCoverage(displayWidth: NSScreen.main?.frame.width ?? 0)
         self.cacheController = MenuBarCacheController(provider: PublicMenuBarDiscoveryProvider())
         self.layoutStore = UserDefaultsLayoutPersistenceStore()
         self.thumbnailProvider = MenuBarThumbnailProvider(
@@ -225,7 +226,7 @@ final class MenuBarController {
                     guard let self else {
                         return ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
                     }
-                    return try await self.captureVisualMenuBarCache()
+                    return try await self.currentMenuBarCacheWithoutChangingVisibility()
                 },
                 visualCacheCleanup: { [weak self] in
                     self?.restoreVisualCaptureVisibility()
@@ -408,12 +409,38 @@ final class MenuBarController {
 
     @MainActor
     private func currentMenuBarCacheWithoutChangingVisibility() async throws -> ItemCache {
-        guard let boundary = sectionController.currentBoundary() else {
-            let snapshot = try await cacheController.refresh()
-            return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
+        let snapshot = try await cacheController.refresh()
+        guard sectionController.hiddenVisibility == .shown else {
+            return physicallyVisibleCache(from: snapshot)
         }
 
-        return try await cacheController.cache(boundary: boundary)
+        guard let boundary = sectionController.currentBoundary() else {
+            return physicallyVisibleCache(from: snapshot)
+        }
+        guard boundary.isOnSameDisplay(as: snapshot.displayID) else {
+            CoronaDebugLog.log("main.cache boundaryDisplayMismatch displayID=\(snapshot.displayID.map(String.init) ?? "nil") hidden=\(boundary.hiddenControlBounds.debugDescription) alwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
+            return physicallyVisibleCache(from: snapshot)
+        }
+
+        let sectionByWindowID = SectionClassifier().classify(items: snapshot.items, boundary: boundary)
+        return ItemCacheBuilder().build(snapshot: snapshot, sectionByWindowID: sectionByWindowID)
+    }
+
+    private func physicallyVisibleCache(from snapshot: MenuBarSnapshot) -> ItemCache {
+        let displayFrame = snapshot.displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        let visibleItems = snapshot.items.filter { item in
+            item.isOnScreen && item.bounds.intersects(displayFrame)
+        }
+        let visibleWindowIDs = Set(visibleItems.map(\.windowID))
+        let hiddenItems = snapshot.items.filter { item in
+            !visibleWindowIDs.contains(item.windowID)
+        }
+        return ItemCache(
+            displayID: snapshot.displayID,
+            visibleItems: visibleItems.sortedByMenuBarPosition(),
+            hiddenItems: hiddenItems.sortedByMenuBarPosition(),
+            alwaysHiddenItems: []
+        )
     }
 
     @MainActor
@@ -460,7 +487,14 @@ final class MenuBarController {
         }
 
         try? await Task.sleep(nanoseconds: 180_000_000)
-        let result = await ensureLayoutApplicationController().applySavedLayout()
+        var result = await ensureLayoutApplicationController().applySavedLayout()
+
+        if result.isSuccessfulApply {
+            let layoutSatisfied = await savedLayoutIsActuallySatisfied()
+            if !layoutSatisfied {
+                result = .failed("savedLayoutNotRestored")
+            }
+        }
 
         if result.isSuccessfulApply {
             sectionController.setHiddenSectionVisible(false)
@@ -483,7 +517,14 @@ final class MenuBarController {
         }
 
         try? await Task.sleep(nanoseconds: 120_000_000)
-        let result = await ensureLayoutApplicationController().applySingleMove(uid: uid, desiredOrder: desiredOrder)
+        var result = await ensureLayoutApplicationController().applySingleMove(uid: uid, desiredOrder: desiredOrder)
+
+        if result.isSuccessfulApply {
+            let layoutSatisfied = await savedLayoutIsActuallySatisfied()
+            if !layoutSatisfied {
+                result = .failed("savedLayoutNotRestored")
+            }
+        }
 
         if result.isSuccessfulApply {
             sectionController.setHiddenSectionVisible(false)
@@ -495,21 +536,86 @@ final class MenuBarController {
         return result
     }
 
+    private func savedLayoutIsActuallySatisfied() async -> Bool {
+        guard let boundary = sectionController.currentBoundary() else {
+            CoronaDebugLog.log("layout.visibleGuard missingBoundary")
+            return false
+        }
+
+        do {
+            let cache = try await cacheController.cache(boundary: boundary)
+            let actualSectionByUID = sectionMap(for: cache)
+            let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { ($0.tag.stableIdentifier, $0) })
+            let savedOrder = layoutStore.loadSavedSectionOrder()
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+            var desiredVisible: [String] = []
+            var mismatches: [String] = []
+
+            for section in MenuBarSection.allCases {
+                for uid in savedOrder[section] {
+                    guard let item = itemByUID[uid], item.isMovable else { continue }
+                    let targetSection: MenuBarSection = item.canBeHidden ? section : .visible
+                    if targetSection == .visible {
+                        desiredVisible.append(uid)
+                    }
+                    if actualSectionByUID[uid] != targetSection {
+                        mismatches.append("\(uid):desired=\(targetSection.rawValue),actual=\(actualSectionByUID[uid]?.rawValue ?? "missing")")
+                    }
+                }
+            }
+
+            let actualVisible = cache.visibleItems.map(\.tag.stableIdentifier)
+            let actualHidden = cache.hiddenItems.map(\.tag.stableIdentifier)
+            let actualAlwaysHidden = cache.alwaysHiddenItems.map(\.tag.stableIdentifier)
+
+            if !mismatches.isEmpty {
+                CoronaDebugLog.log("layout.visibleGuard failed desiredVisible=\(desiredVisible) mismatches=\(mismatches) actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden) boundaryHidden=\(boundary.hiddenControlBounds.debugDescription) boundaryAlwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
+                return false
+            }
+
+            CoronaDebugLog.log("layout.visibleGuard satisfied desiredVisible=\(desiredVisible) actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden)")
+            return true
+        } catch {
+            CoronaDebugLog.log("layout.visibleGuard failed error=\(String(describing: error))")
+            return false
+        }
+    }
+
+    private func sectionMap(for cache: ItemCache) -> [String: MenuBarSection] {
+        var result: [String: MenuBarSection] = [:]
+        for item in cache.visibleItems {
+            result[item.tag.stableIdentifier] = .visible
+        }
+        for item in cache.hiddenItems {
+            result[item.tag.stableIdentifier] = .hidden
+        }
+        for item in cache.alwaysHiddenItems {
+            result[item.tag.stableIdentifier] = .alwaysHidden
+        }
+        return result
+    }
+
     private func sanitizeSavedLayout() {
         let savedOrder = layoutStore.loadSavedSectionOrder()
-        let sanitized = savedOrder.removingCoronaSelfItems()
+        let sanitized = savedOrder
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
         if sanitized != savedOrder {
             layoutStore.saveSavedSectionOrder(sanitized)
         }
 
         let known = layoutStore.loadKnownItemIdentifiers()
-        let sanitizedKnown = known.filter { !Self.isCoronaSelfIdentifier($0) }
+        let sanitizedKnown = known.filter {
+            !Self.isCoronaSelfIdentifier($0)
+                && !Self.isLegacyAXGeneratedIdentifier($0)
+        }
         if sanitizedKnown != known {
             layoutStore.saveKnownItemIdentifiers(Set(sanitizedKnown))
         }
 
         let savedUIDs = Set(savedOrder.visible + savedOrder.hidden + savedOrder.alwaysHidden)
-        for uid in known.union(savedUIDs) where Self.isCoronaSelfIdentifier(uid) {
+        for uid in known.union(savedUIDs) where Self.isCoronaSelfIdentifier(uid) || Self.isLegacyAXGeneratedIdentifier(uid) {
             layoutStore.savePendingRelocation(nil, for: uid)
         }
     }
@@ -521,6 +627,14 @@ final class MenuBarController {
             || uid.localizedCaseInsensitiveContains("Corona:Corona")
             || uid.localizedCaseInsensitiveContains("Corona:Status Item")
             || uid.localizedCaseInsensitiveContains("corona.control")
+    }
+
+    static func isLegacyAXGeneratedIdentifier(_ uid: String) -> Bool {
+        let parts = uid.split(separator: ":").map(String.init)
+        guard parts.count >= 2 else { return false }
+        let title = parts[1]
+        guard title.hasPrefix("item-") else { return false }
+        return title.dropFirst("item-".count).allSatisfy(\.isNumber)
     }
 
     private func scheduleAutoRehideIfNeeded() {
@@ -565,6 +679,14 @@ extension SectionOrder {
             alwaysHidden: alwaysHidden.filter { !MenuBarController.isCoronaSelfIdentifier($0) }
         )
     }
+
+    func removingLegacyAXGeneratedItems() -> SectionOrder {
+        SectionOrder(
+            visible: visible.filter { !MenuBarController.isLegacyAXGeneratedIdentifier($0) },
+            hidden: hidden.filter { !MenuBarController.isLegacyAXGeneratedIdentifier($0) },
+            alwaysHidden: alwaysHidden.filter { !MenuBarController.isLegacyAXGeneratedIdentifier($0) }
+        )
+    }
 }
 
 extension LayoutApplicationResult {
@@ -575,5 +697,27 @@ extension LayoutApplicationResult {
         case .missingBoundary, .waitingForItem, .waitingForDestination, .failed:
             return false
         }
+    }
+}
+
+private extension Array where Element == MenuBarItem {
+    func sortedByMenuBarPosition() -> [MenuBarItem] {
+        sorted { lhs, rhs in
+            if abs(lhs.bounds.minX - rhs.bounds.minX) > 0.5 {
+                return lhs.bounds.minX < rhs.bounds.minX
+            }
+            return lhs.windowID < rhs.windowID
+        }
+    }
+}
+
+private extension SectionBoundary {
+    func isOnSameDisplay(as displayID: UInt32?) -> Bool {
+        let displayFrame = displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        guard hiddenControlBounds.intersects(displayFrame) else { return false }
+        if let alwaysHiddenControlBounds {
+            return alwaysHiddenControlBounds.intersects(displayFrame)
+        }
+        return true
     }
 }

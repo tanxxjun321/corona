@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import CoronaCore
+import Darwin
 import Foundation
 
 typealias PublicMenuBarDiscoveryProvider = DirectMenuBarDiscoveryProvider
@@ -20,6 +21,16 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
         let targetDisplay = Self.targetMenuBarDisplay()
         let allDisplayFrames = Self.displayFrames()
         let targetDisplayFrames = [targetDisplay.frame]
+        if Self.shouldUseAXOrderedDiscovery,
+           let axSnapshot = Self.axOrderedSnapshot(
+            rawWindows: rawWindows,
+            targetDisplay: targetDisplay,
+            allDisplayFrames: allDisplayFrames,
+            targetDisplayFrames: targetDisplayFrames
+        ) {
+            return axSnapshot
+        }
+
         let menuBarCandidates = rawWindows.compactMap { makeMenuBarItem(from: $0, displayFrames: targetDisplayFrames) }
         let targetDisplayCandidates = MenuBarTargetDisplayFilter(
             targetDisplayFrame: targetDisplay.frame,
@@ -36,11 +47,104 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             resolvedItem(item, sourcePID: sourcePIDByWindowID[item.windowID] ?? item.sourcePID)
         }
         let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: resolvedCandidates)
-        CoronaDebugLog.log("discovery.snapshot rawWindows=\(rawWindows.count) targetDisplay=\(targetDisplay.id) candidates=\(menuBarCandidates.count) target=\(targetDisplayCandidates.count) unique=\(uniqueCandidates.count) assigned=\(assigned.count) axSourcePID=\(Self.shouldResolveSourcePIDs)")
+        let rejectedByNonTargetDisplay = menuBarCandidates.count - targetDisplayCandidates.count
+        let rejectedAsDuplicate = targetDisplayCandidates.count - uniqueCandidates.count
+        CoronaDebugLog.log("discovery.snapshot targetDisplay=\(targetDisplay.id) targetFrame=\(targetDisplay.frame.debugDescription) rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) assigned=\(assigned.count) axSourcePID=\(Self.shouldResolveSourcePIDs)")
+        CoronaDebugLog.log("discovery.assigned uids=\(assigned.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
         for item in assigned {
             CoronaDebugLog.verbose("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") onScreen=\(item.isOnScreen) canBeHidden=\(item.canBeHidden) movable=\(item.isMovable)")
         }
         return MenuBarSnapshot(displayID: targetDisplay.id, items: assigned)
+    }
+
+    private static func axOrderedSnapshot(
+        rawWindows: [[String: Any]],
+        targetDisplay: TargetDisplay,
+        allDisplayFrames: [CGRect],
+        targetDisplayFrames: [CGRect]
+    ) -> MenuBarSnapshot? {
+        let axRecords = AXOrderedMenuBarScanner().records(on: targetDisplay.frame)
+        guard !axRecords.isEmpty else {
+            CoronaDebugLog.log("discovery.ax fallback reason=emptyAXTree")
+            return nil
+        }
+
+        let cgCandidates = rawWindows.compactMap { info in
+            DirectMenuBarDiscoveryProvider().makeMenuBarItem(from: info, displayFrames: targetDisplayFrames)
+        }
+        let targetDisplayCandidates = MenuBarTargetDisplayFilter(
+            targetDisplayFrame: targetDisplay.frame,
+            otherDisplayFrames: allDisplayFrames.filter { !$0.equalTo(targetDisplay.frame) }
+        ).itemsOnTargetDisplay(cgCandidates)
+        let uniqueCandidates = MenuBarDisplayDuplicateFilter(
+            primaryDisplayFrame: targetDisplay.frame,
+            displayFrames: targetDisplayFrames
+        ).uniqueItems(from: targetDisplayCandidates)
+
+        var unmatchedWindows = uniqueCandidates
+        let matchedPairs = axRecords.compactMap { record -> (AXOrderedMenuBarScanner.AXRecord, MenuBarItem)? in
+            guard let match = bestWindowMatch(for: record, candidates: unmatchedWindows) else {
+                return nil
+            }
+            unmatchedWindows.removeAll { $0.windowID == match.windowID }
+            return (record, match)
+        }
+
+        let minimumUsefulMatchCount = min(uniqueCandidates.count, max(3, uniqueCandidates.count / 2))
+        guard matchedPairs.count >= minimumUsefulMatchCount else {
+            CoronaDebugLog.log("discovery.ax fallback reason=lowMatchCount matched=\(matchedPairs.count) required=\(minimumUsefulMatchCount) cgCandidates=\(uniqueCandidates.count)")
+            return nil
+        }
+
+        let items = matchedPairs.enumerated().map { orderedIndex, pair -> MenuBarItem in
+            let record = pair.0
+            let match = pair.1
+            let namespace = record.bundleIdentifier ?? match.tag.namespace
+            let displayTitle = record.title ?? match.title ?? record.applicationName ?? "Status Item"
+            let sourceIsSystemItem = record.bundleIdentifier?.hasPrefix("com.apple.") == true
+
+            return MenuBarItem(
+                tag: MenuBarItemTag(
+                    namespace: namespace,
+                    title: "item-\(orderedIndex)",
+                    volatileWindowID: match.windowID
+                ),
+                windowID: match.windowID,
+                ownerPID: match.ownerPID,
+                sourcePID: record.sourcePID,
+                bounds: match.bounds,
+                title: displayTitle,
+                isOnScreen: match.isOnScreen,
+                isMovable: match.isMovable && !sourceIsSystemItem,
+                canBeHidden: match.canBeHidden && !sourceIsSystemItem
+            )
+        }
+
+        let rejectedByNonTargetDisplay = cgCandidates.count - targetDisplayCandidates.count
+        let rejectedAsDuplicate = targetDisplayCandidates.count - uniqueCandidates.count
+        CoronaDebugLog.log("discovery.ax phase2 rawWindows=\(rawWindows.count) cgCandidates=\(cgCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) matched=\(items.count) unmatchedAX=\(axRecords.count - matchedPairs.count) unmatchedWindows=\(unmatchedWindows.count)")
+        CoronaDebugLog.log("discovery.ax phase3 assigned uids=\(items.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
+
+        return MenuBarSnapshot(displayID: targetDisplay.id, items: items)
+    }
+
+    private static func bestWindowMatch(
+        for record: AXOrderedMenuBarScanner.AXRecord,
+        candidates: [MenuBarItem]
+    ) -> MenuBarItem? {
+        let center = CGPoint(x: record.bounds.midX, y: record.bounds.midY)
+        return candidates
+            .map { candidate -> (item: MenuBarItem, score: CGFloat) in
+                let candidateCenter = CGPoint(x: candidate.bounds.midX, y: candidate.bounds.midY)
+                let distance = hypot(center.x - candidateCenter.x, center.y - candidateCenter.y)
+                let pidPenalty: CGFloat = candidate.ownerPID == record.sourcePID || candidate.sourcePID == record.sourcePID ? 0 : 24
+                let sizePenalty = abs(candidate.bounds.width - record.bounds.width) * 0.25
+                    + abs(candidate.bounds.height - record.bounds.height) * 0.25
+                return (candidate, distance + pidPenalty + sizePenalty)
+            }
+            .filter { $0.score <= 36 }
+            .min { $0.score < $1.score }?
+            .item
     }
 
     private func makeMenuBarItem(from info: [String: Any], displayFrames: [CGRect]) -> MenuBarItem? {
@@ -94,7 +198,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             bounds: bounds,
             title: title,
             isOnScreen: isOnScreen,
-            isMovable: true,
+            isMovable: !isSystemItem,
             canBeHidden: !isSystemItem
         )
     }
@@ -117,7 +221,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             bounds: item.bounds,
             title: item.title,
             isOnScreen: item.isOnScreen,
-            isMovable: item.isMovable,
+            isMovable: item.isMovable && !isSystemItem,
             canBeHidden: !isSystemItem
         )
     }
@@ -159,6 +263,10 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
 
     private static var shouldResolveSourcePIDs: Bool {
         ProcessInfo.processInfo.environment["CORONA_RESOLVE_AX_MENU_BAR_SOURCE_PIDS"] == "1"
+    }
+
+    private static var shouldUseAXOrderedDiscovery: Bool {
+        ProcessInfo.processInfo.environment["CORONA_ENABLE_AX_ORDERED_DISCOVERY"] == "1"
     }
 }
 

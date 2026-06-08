@@ -32,6 +32,7 @@
 		1A1000000000000000000017 /* PrivateMenuBarWindowListProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */; };
 		1A1000000000000000000018 /* AXMenuBarSourcePIDResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */; };
 		1A1000000000000000000019 /* SkyLightWindowImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011C /* SkyLightWindowImageProvider.swift */; };
+		1A100000000000000000001A /* MenuBarAppearanceSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011D /* MenuBarAppearanceSampler.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,6 +64,7 @@
 		1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateMenuBarWindowListProvider.swift; sourceTree = "<group>"; };
 		1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXMenuBarSourcePIDResolver.swift; sourceTree = "<group>"; };
 		1A100000000000000000011C /* SkyLightWindowImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLightWindowImageProvider.swift; sourceTree = "<group>"; };
+		1A100000000000000000011D /* MenuBarAppearanceSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAppearanceSampler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,6 +111,7 @@
 				1A1000000000000000000106 /* LayoutEditorWindowController.swift */,
 				1A1000000000000000000116 /* MainPanelWindowController.swift */,
 				1A1000000000000000000107 /* MenuBarController.swift */,
+				1A100000000000000000011D /* MenuBarAppearanceSampler.swift */,
 				1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */,
 				1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */,
 				1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */,
@@ -233,6 +236,7 @@
 				1A1000000000000000000017 /* PrivateMenuBarWindowListProvider.swift in Sources */,
 				1A1000000000000000000018 /* AXMenuBarSourcePIDResolver.swift in Sources */,
 				1A1000000000000000000019 /* SkyLightWindowImageProvider.swift in Sources */,
+				1A100000000000000000001A /* MenuBarAppearanceSampler.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

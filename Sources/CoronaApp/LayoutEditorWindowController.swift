@@ -95,7 +95,11 @@ final class LayoutEditorViewModel: ObservableObject {
                 itemByUID = Dictionary(uniqueKeysWithValues: editableItems.map { item in
                     (item.tag.stableIdentifier, item)
                 })
-                draft = LayoutDraft(order: availableOrder(preferredOrder(cache: cache).removingCoronaSelfItems()))
+                draft = LayoutDraft(order: availableOrder(
+                    preferredOrder(cache: cache)
+                        .removingCoronaSelfItems()
+                        .removingLegacyAXGeneratedItems()
+                ))
                 rebuildRows()
                 hasUnsavedChanges = false
             } catch {
@@ -124,7 +128,11 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     func save() {
-        let sanitizedOrder = availableOrder(draft.order.removingCoronaSelfItems())
+        let sanitizedOrder = availableOrder(
+            draft.order
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+        )
         draft = LayoutDraft(order: sanitizedOrder)
         layoutStore.saveSavedSectionOrder(sanitizedOrder)
         layoutStore.saveKnownItemIdentifiers(Set(sanitizedOrder.visible + sanitizedOrder.hidden + sanitizedOrder.alwaysHidden))
@@ -174,8 +182,12 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     private func preferredOrder(cache: ItemCache) -> SectionOrder {
-        let savedOrder = layoutStore.loadSavedSectionOrder().removingCoronaSelfItems()
-        let currentOrder = SectionOrder(cache: cache).removingCoronaSelfItems()
+        let savedOrder = layoutStore.loadSavedSectionOrder()
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
+        let currentOrder = SectionOrder(cache: cache)
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
         guard !savedOrder.isEmpty else {
             return currentOrder
         }
@@ -197,7 +209,11 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     private func rebuildRows() {
-        draft = LayoutDraft(order: availableOrder(draft.order.removingCoronaSelfItems()))
+        draft = LayoutDraft(order: availableOrder(
+            draft.order
+                .removingCoronaSelfItems()
+                .removingLegacyAXGeneratedItems()
+        ))
         visibleRows = rows(for: .visible)
         hiddenRows = rows(for: .hidden)
         alwaysHiddenRows = rows(for: .alwaysHidden)

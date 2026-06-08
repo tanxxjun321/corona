@@ -32,6 +32,11 @@ enum LayoutApplicationResult: Equatable {
 }
 
 final class LayoutApplicationController {
+    private enum Constants {
+        static let verificationTolerancePixels: CGFloat = 8
+        static let enableDirectMouseMoveEnvironmentKey = "CORONA_ENABLE_DIRECT_MOUSE_MOVE"
+    }
+
     private let cacheController: MenuBarCacheController
     private let layoutStore: LayoutPersistenceStore
     private let settingsStore: SettingsStore
@@ -87,62 +92,20 @@ final class LayoutApplicationController {
             case .satisfied:
                 return moveCount > 0 ? .applied(moveCount) : .satisfied
             case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
-                return moveCount > 0 ? .applied(moveCount) : result
+                return result
             case .applied:
                 return result
             }
         }
 
-        return moveCount > 0 ? .applied(moveCount) : .satisfied
+        return .failed("maxStepsExceeded")
     }
 
     func applySingleMove(uid: String, desiredOrder: SectionOrder) async -> LayoutApplicationResult {
-        guard let boundary = await boundaryProvider() else {
-            CoronaDebugLog.log("layout.applySingleMove missingBoundary uid=\(uid)")
-            return .missingBoundary
-        }
-
-        do {
-            let cache = try await cacheController.cache(boundary: boundary)
-            let manageableCache = cache.keepingOnlyManageableItems()
-            guard let item = manageableCache.item(withStableIdentifier: uid) else {
-                CoronaDebugLog.log("layout.applySingleMove waitingForItem uid=\(uid)")
-                return .waitingForItem(uid)
-            }
-
-            let availableUIDs = Set(manageableCache.allItems.map(\.tag.stableIdentifier))
-            let desired = desiredOrder.keepingOnlyAvailableUIDs(availableUIDs)
-            guard let targetSection = desired.section(containing: uid) else {
-                CoronaDebugLog.log("layout.applySingleMove targetMissing uid=\(uid)")
-                return .waitingForItem(uid)
-            }
-
-            if targetSection != .visible, !item.canBeHidden {
-                CoronaDebugLog.log("layout.applySingleMove rejectedNonHideable uid=\(uid) target=\(targetSection)")
-                return .failed("Item cannot be hidden")
-            }
-
-            let target = singleMoveTarget(uid: uid, section: targetSection, desiredOrder: desired, cache: manageableCache)
-            guard let destination = MoveDestinationResolver().resolve(
-                target: target,
-                cache: manageableCache,
-                sectionBoundaries: await boundaryItemsProvider()
-            ) else {
-                CoronaDebugLog.log("layout.applySingleMove waitingForDestination uid=\(uid) target=\(target)")
-                return .waitingForDestination
-            }
-
-            let move = LayoutMove(itemUID: uid, target: target)
-            CoronaDebugLog.log("layout.applySingleMove uid=\(uid) target=\(target) destination=\(debugDescription(for: destination))")
-            return await apply(
-                step: .move(ResolvedLayoutMove(plannedMove: move, item: item, destination: destination)),
-                cache: manageableCache,
-                boundary: boundary
-            )
-        } catch {
-            CoronaDebugLog.log("layout.applySingleMove failed uid=\(uid) error=\(String(describing: error))")
-            return .failed(String(describing: error))
-        }
+        layoutStore.saveSavedSectionOrder(desiredOrder)
+        layoutStore.saveKnownItemIdentifiers(Set(desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden))
+        CoronaDebugLog.log("layout.applySingleMove savedIntent uid=\(uid) visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
+        return await applySavedLayout()
     }
 
     func reveal(uid: String, maxSteps: Int = 8) async -> LayoutApplicationResult {
@@ -183,16 +146,16 @@ final class LayoutApplicationController {
                 case .satisfied:
                     return moveCount > 0 ? .applied(moveCount) : .satisfied
                 case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
-                    return moveCount > 0 ? .applied(moveCount) : result
+                    return result
                 case .applied:
                     return .applied(moveCount)
                 }
             } catch {
-                return moveCount > 0 ? .applied(moveCount) : .failed(String(describing: error))
+                return .failed(String(describing: error))
             }
         }
 
-        return moveCount > 0 ? .applied(moveCount) : .satisfied
+        return .failed("maxStepsExceeded")
     }
 
     private func applyNextStep() async -> LayoutApplicationResult {
@@ -203,6 +166,10 @@ final class LayoutApplicationController {
 
         do {
             let cache = try await cacheController.cache(boundary: boundary)
+            guard boundary.isOnSameDisplay(as: cache.displayID) else {
+                CoronaDebugLog.log("layout.applyNextStep boundaryDisplayMismatch displayID=\(cache.displayID.map(String.init) ?? "nil") hidden=\(boundary.hiddenControlBounds.debugDescription) alwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
+                return .missingBoundary
+            }
             let manageableCache = cache.keepingOnlyManageableItems()
             CoronaDebugLog.log("layout.applyNextStep boundary hidden=\(boundary.hiddenControlBounds.debugDescription) alwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
             CoronaDebugLog.log("layout.applyNextStep cache visible=\(cache.visibleItems.map(\.tag.stableIdentifier)) hidden=\(cache.hiddenItems.map(\.tag.stableIdentifier)) alwaysHidden=\(cache.alwaysHiddenItems.map(\.tag.stableIdentifier))")
@@ -211,24 +178,10 @@ final class LayoutApplicationController {
                 CoronaDebugLog.log("layout.applyNextStep skippedUnmanageable=\(skipped.sorted())")
             }
             let preference = layoutPreference(pruningUnavailableItemsIn: manageableCache)
-            let currentOrder = SectionOrder(cache: manageableCache)
-            var desiredOrder = sectionOnlyDesiredOrder(currentOrder: currentOrder, savedOrder: preference.savedOrder)
-            desiredOrder = applyNotchOverflowIfNeeded(
-                desiredOrder: desiredOrder,
-                cache: cache,
-                manageableCache: manageableCache,
-                settings: settingsStore.load()
-            )
             CoronaDebugLog.log("layout.applyNextStep preference visible=\(preference.savedOrder.visible) hidden=\(preference.savedOrder.hidden) alwaysHidden=\(preference.savedOrder.alwaysHidden)")
-            CoronaDebugLog.log("layout.applyNextStep sectionOnlyDesired visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
             let step = planner.nextStep(
                 cache: manageableCache,
-                preference: LayoutPreference(
-                    savedOrder: desiredOrder,
-                    newItemsSection: preference.newItemsSection,
-                    newItemsPlacement: preference.newItemsPlacement,
-                    alwaysHiddenEnabled: preference.alwaysHiddenEnabled
-                ),
+                preference: preference,
                 sectionBoundaries: await boundaryItemsProvider()
             )
             CoronaDebugLog.log("layout.applyNextStep planned=\(debugDescription(for: step))")
@@ -264,6 +217,21 @@ final class LayoutApplicationController {
         case .move(let resolvedMove):
             logger.log(.moveStarted(uid: resolvedMove.plannedMove.itemUID, target: resolvedMove.plannedMove.target))
             CoronaDebugLog.log("layout.move start uid=\(resolvedMove.plannedMove.itemUID) target=\(resolvedMove.plannedMove.target) destination=\(debugDescription(for: resolvedMove.destination)) itemBounds=\(resolvedMove.item.bounds.debugDescription)")
+            let fallbackResult = await PersistentMenuBarLayoutFallback().apply(
+                desiredOrder: layoutStore.loadSavedSectionOrder(),
+                movedUID: resolvedMove.plannedMove.itemUID
+            )
+            CoronaDebugLog.log("layout.move persistentFallback result=\(fallbackResult.debugDescription)")
+            if fallbackResult.didApply {
+                return .moved(resolvedMove.plannedMove.itemUID)
+            }
+
+            guard Self.directMouseMoveEnabled else {
+                logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: false))
+                CoronaDebugLog.log("layout.move skippedDirectMouse uid=\(resolvedMove.plannedMove.itemUID) fallback=\(fallbackResult.debugDescription)")
+                return .failed("backgroundMoveUnavailable; direct mouse move disabled")
+            }
+
             var lastError: Error?
             for attempt in 0..<3 {
                 do {
@@ -279,10 +247,15 @@ final class LayoutApplicationController {
                     )
                     let refreshedCache = try await cacheController.cache(boundary: boundary)
                     CoronaDebugLog.log("layout.move refreshed visible=\(refreshedCache.visibleItems.map(\.tag.stableIdentifier)) hidden=\(refreshedCache.hiddenItems.map(\.tag.stableIdentifier)) alwaysHidden=\(refreshedCache.alwaysHiddenItems.map(\.tag.stableIdentifier))")
-                    let destinationSatisfied = resolvedMove.destination.isSatisfied(for: resolvedMove.plannedMove.itemUID, in: refreshedCache)
+                    let destinationSatisfied = resolvedMove.destination.isSatisfied(
+                        for: resolvedMove.plannedMove.itemUID,
+                        in: refreshedCache,
+                        tolerancePixels: Constants.verificationTolerancePixels
+                    )
                     let targetSectionSatisfied = targetSectionIsSatisfied(
                         for: resolvedMove.plannedMove,
-                        in: refreshedCache
+                        in: refreshedCache,
+                        boundary: boundary
                     )
                     if destinationSatisfied && targetSectionSatisfied {
                         logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: true))
@@ -303,11 +276,54 @@ final class LayoutApplicationController {
         }
     }
 
-    private func targetSectionIsSatisfied(for move: LayoutMove, in cache: ItemCache) -> Bool {
+    private static var directMouseMoveEnabled: Bool {
+        ProcessInfo.processInfo.environment[Constants.enableDirectMouseMoveEnvironmentKey] == "1"
+    }
+
+    private func targetSectionIsSatisfied(
+        for move: LayoutMove,
+        in cache: ItemCache,
+        boundary: SectionBoundary
+    ) -> Bool {
         guard case .sectionBoundary(let section) = move.target else {
             return true
         }
-        return cache.section(containing: move.itemUID) == section
+        guard let item = cache.item(withStableIdentifier: move.itemUID) else {
+            return false
+        }
+        if cache.section(containing: move.itemUID) == section {
+            return true
+        }
+        return tolerantSection(for: item.bounds, boundary: boundary) == section
+    }
+
+    private func tolerantSection(for itemBounds: CGRect, boundary: SectionBoundary) -> MenuBarSection {
+        let tolerance = Constants.verificationTolerancePixels
+        let hidden = boundary.hiddenControlBounds
+        guard let alwaysHidden = boundary.alwaysHiddenControlBounds else {
+            if itemBounds.maxX <= hidden.minX + tolerance {
+                return .hidden
+            }
+            return .visible
+        }
+
+        if alwaysHidden.minX < hidden.minX {
+            if itemBounds.maxX <= alwaysHidden.minX + tolerance {
+                return .alwaysHidden
+            }
+            if itemBounds.maxX <= hidden.minX + tolerance {
+                return .hidden
+            }
+            return .visible
+        }
+
+        if itemBounds.maxX <= hidden.minX + tolerance {
+            return .alwaysHidden
+        }
+        if itemBounds.maxX <= alwaysHidden.minX + tolerance {
+            return .hidden
+        }
+        return .visible
     }
 
     private func debugDescription(for step: LayoutApplicationStep) -> String {
@@ -385,16 +401,16 @@ final class LayoutApplicationController {
                     pending.removeValue(forKey: entry.key)
                     continue
                 case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
-                    return moveCount > 0 ? .applied(moveCount) : result
+                    return result
                 case .applied(let count):
                     moveCount += count
                 }
             } catch {
-                return moveCount > 0 ? .applied(moveCount) : .failed(String(describing: error))
+                return .failed(String(describing: error))
             }
         }
 
-        return moveCount > 0 ? .applied(moveCount) : .satisfied
+        return .failed("maxStepsExceeded")
     }
 
     private func pendingRecoveryOrder(
@@ -417,52 +433,6 @@ final class LayoutApplicationController {
         }
         order.visible.insert(uid, at: 0)
         return order
-    }
-
-    private func singleMoveTarget(
-        uid: String,
-        section: MenuBarSection,
-        desiredOrder: SectionOrder,
-        cache: ItemCache
-    ) -> LayoutTarget {
-        guard let index = desiredOrder[section].firstIndex(of: uid), index > desiredOrder[section].startIndex else {
-            return .sectionBoundary(section)
-        }
-
-        if section == .visible,
-           let terminalSystemAnchor = terminalSystemAnchorBeforeEnd(uid: uid, desiredOrder: desiredOrder, cache: cache) {
-            return .leftOfUID(terminalSystemAnchor)
-        }
-
-        return .rightOfUID(desiredOrder[section][desiredOrder[section].index(before: index)])
-    }
-
-    private func terminalSystemAnchorBeforeEnd(
-        uid: String,
-        desiredOrder: SectionOrder,
-        cache: ItemCache
-    ) -> String? {
-        var visible = desiredOrder.visible
-        guard let insertionIndex = visible.firstIndex(of: uid),
-              insertionIndex == visible.index(before: visible.endIndex) else {
-            return nil
-        }
-
-        visible.remove(at: insertionIndex)
-        guard !visible.isEmpty else { return nil }
-
-        var suffixStart = visible.endIndex
-        while suffixStart > visible.startIndex {
-            let previousIndex = visible.index(before: suffixStart)
-            guard let item = cache.item(withStableIdentifier: visible[previousIndex]),
-                  !item.canBeHidden else {
-                break
-            }
-            suffixStart = previousIndex
-        }
-
-        guard suffixStart < visible.endIndex else { return nil }
-        return visible[suffixStart]
     }
 
     private func layoutPreference() -> LayoutPreference {
@@ -500,75 +470,6 @@ final class LayoutApplicationController {
         return preference
     }
 
-    private func sectionOnlyDesiredOrder(currentOrder: SectionOrder, savedOrder: SectionOrder) -> SectionOrder {
-        let savedSectionByUID = savedOrder.sectionMap
-        var result = SectionOrder()
-        for section in MenuBarSection.allCases {
-            for uid in currentOrder[section] {
-                let targetSection = savedSectionByUID[uid] ?? section
-                result[targetSection].append(uid)
-            }
-        }
-        return result
-    }
-
-    private func applyNotchOverflowIfNeeded(
-        desiredOrder: SectionOrder,
-        cache: ItemCache,
-        manageableCache: ItemCache,
-        settings: AppSettings
-    ) -> SectionOrder {
-        guard settings.enableNotchOverflow,
-              let screen = screen(for: cache.displayID),
-              screen.hasNotch,
-              let notch = screen.frameOfNotch
-        else {
-            return desiredOrder
-        }
-
-        let rightBoundary = menuBarRightBoundary(cache: cache, notch: notch, screen: screen)
-        let notchGap: CGFloat = 24
-        let availableWidth = rightBoundary - (notch.maxX + notchGap)
-        let visibleUIDs = Set(desiredOrder.visible)
-        let itemWidths = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
-            (item.tag.stableIdentifier, item.bounds.width)
-        })
-        let hideableUIDs = Set(
-            manageableCache.allItems
-                .filter { $0.canBeHidden && visibleUIDs.contains($0.tag.stableIdentifier) }
-                .map(\.tag.stableIdentifier)
-        )
-
-        let plan = NotchOverflowPlanner().plan(
-            desiredOrder: desiredOrder,
-            itemWidths: itemWidths,
-            hideableUIDs: hideableUIDs,
-            availableWidth: availableWidth
-        )
-        if !plan.overflowUIDs.isEmpty {
-            CoronaDebugLog.log("layout.notchOverflow availableWidth=\(availableWidth) rightBoundary=\(rightBoundary) notch=\(notch.debugDescription) overflow=\(plan.overflowUIDs)")
-        }
-        return plan.order
-    }
-
-    private func screen(for displayID: UInt32?) -> NSScreen? {
-        if let displayID,
-           let screen = NSScreen.screens.first(where: { UInt32($0.displayID) == displayID }) {
-            return screen
-        }
-        return NSScreen.main
-    }
-
-    private func menuBarRightBoundary(cache: ItemCache, notch: CGRect, screen: NSScreen) -> CGFloat {
-        let protectedVisibleItems = cache.allItems.filter { item in
-            guard item.bounds.minX >= notch.maxX else { return false }
-            return !item.canBeHidden
-        }
-        if let firstProtected = protectedVisibleItems.min(by: { $0.bounds.minX < $1.bounds.minX }) {
-            return firstProtected.bounds.minX
-        }
-        return screen.frame.maxX
-    }
 }
 
 private extension MenuBarSection {
@@ -587,16 +488,6 @@ private extension MenuBarSection {
 private extension SectionOrder {
     var allUIDs: [String] {
         visible + hidden + alwaysHidden
-    }
-
-    var sectionMap: [String: MenuBarSection] {
-        var result: [String: MenuBarSection] = [:]
-        for section in MenuBarSection.allCases {
-            for uid in self[section] {
-                result[uid] = section
-            }
-        }
-        return result
     }
 
     func keepingOnlyAvailableUIDs(_ availableUIDs: Set<String>) -> SectionOrder {
@@ -634,7 +525,7 @@ private extension ItemCache {
 
 private extension MenuBarItem {
     var isManageableByCorona: Bool {
-        isMovable
+        isMovable && canBeHidden
     }
 }
 
@@ -642,22 +533,137 @@ private extension NSScreen {
     var displayID: CGDirectDisplayID {
         deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
     }
+}
 
-    var hasNotch: Bool {
-        auxiliaryTopLeftArea != nil
+private extension SectionBoundary {
+    func isOnSameDisplay(as displayID: UInt32?) -> Bool {
+        let displayFrame = displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        guard hiddenControlBounds.intersects(displayFrame) else { return false }
+        if let alwaysHiddenControlBounds {
+            return alwaysHiddenControlBounds.intersects(displayFrame)
+        }
+        return true
     }
+}
 
-    var frameOfNotch: CGRect? {
-        guard let auxiliaryTopLeftArea,
-              let auxiliaryTopRightArea else {
-            return nil
+private struct PersistentMenuBarLayoutFallback {
+    private static let enabledEnvironmentKey = "CORONA_ENABLE_CONTROL_CENTER_PLIST_FALLBACK"
+    private static let domain = "com.apple.controlcenter"
+    private static let candidateOrderKeys = [
+        "NSStatusItem Preferred Position Item-Ordering",
+        "NSStatusItem Visible Item-Ordering",
+        "MenuExtras",
+        "menuExtras"
+    ]
+
+    func apply(desiredOrder: SectionOrder, movedUID: String) async -> Result {
+        guard ProcessInfo.processInfo.environment[Self.enabledEnvironmentKey] == "1" else {
+            return .disabled
         }
 
-        return CGRect(
-            x: auxiliaryTopLeftArea.maxX,
-            y: frame.maxY - safeAreaInsets.top,
-            width: auxiliaryTopRightArea.minX - auxiliaryTopLeftArea.maxX,
-            height: safeAreaInsets.top
+        let desiredUIDs = desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden
+        guard !desiredUIDs.isEmpty else {
+            return .unavailable("emptyDesiredOrder")
+        }
+
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Preferences/\(Self.domain).plist")
+        guard let plist = NSMutableDictionary(contentsOf: url) else {
+            return .unavailable("missingPlist:\(url.path)")
+        }
+
+        for key in Self.candidateOrderKeys {
+            guard let currentArray = plist[key] as? [String], !currentArray.isEmpty else {
+                continue
+            }
+
+            let reordered = reorderedSystemArray(currentArray, desiredUIDs: desiredUIDs)
+            guard reordered != currentArray else {
+                continue
+            }
+
+            plist[key] = reordered
+            guard plist.write(to: url, atomically: true) else {
+                return .failed("writeFailed:\(url.path)")
+            }
+
+            CFPreferencesAppSynchronize(Self.domain as CFString)
+            notifyControlCenterReload()
+            return .applied(key: key, movedUID: movedUID)
+        }
+
+        return .unavailable("noKnownOrderArray")
+    }
+
+    private func reorderedSystemArray(_ currentArray: [String], desiredUIDs: [String]) -> [String] {
+        let rankByToken = Dictionary(uniqueKeysWithValues: desiredUIDs.enumerated().flatMap { index, uid in
+            identifierTokens(for: uid).map { ($0, index) }
+        })
+
+        return currentArray.enumerated().sorted { lhs, rhs in
+            let lhsRank = bestRank(for: lhs.element, rankByToken: rankByToken) ?? Int.max
+            let rhsRank = bestRank(for: rhs.element, rankByToken: rankByToken) ?? Int.max
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
+
+    private func bestRank(for systemIdentifier: String, rankByToken: [String: Int]) -> Int? {
+        let lowercased = systemIdentifier.lowercased()
+        return rankByToken.compactMap { token, rank in
+            lowercased.contains(token) ? rank : nil
+        }.min()
+    }
+
+    private func identifierTokens(for uid: String) -> [String] {
+        uid.lowercased()
+            .split(separator: ":")
+            .map(String.init)
+            .filter { $0.count >= 4 && !$0.hasPrefix("item-") }
+    }
+
+    private func notifyControlCenterReload() {
+        let notification = "com.apple.controlcenter.preferences-changed" as CFString
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDistributedCenter(),
+            CFNotificationName(notification),
+            nil,
+            nil,
+            true
         )
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        task.arguments = ["ControlCenter"]
+        try? task.run()
+    }
+
+    enum Result {
+        case disabled
+        case unavailable(String)
+        case failed(String)
+        case applied(key: String, movedUID: String)
+
+        var didApply: Bool {
+            if case .applied = self {
+                return true
+            }
+            return false
+        }
+
+        var debugDescription: String {
+            switch self {
+            case .disabled:
+                return "disabled"
+            case .unavailable(let reason):
+                return "unavailable(\(reason))"
+            case .failed(let reason):
+                return "failed(\(reason))"
+            case .applied(let key, let movedUID):
+                return "applied key=\(key) movedUID=\(movedUID)"
+            }
+        }
     }
 }
