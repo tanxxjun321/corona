@@ -73,8 +73,8 @@ final class HiddenItemsHoverBarController {
             ?? NSScreen.main
 
         Task { @MainActor in
-            await model.refreshNow()
             guard let screen else { return }
+            await model.refreshNow(on: screen)
             show(near: anchorFrame, on: screen)
         }
     }
@@ -101,18 +101,14 @@ final class HiddenItemsHoverBarController {
     private func show(near triggerFrame: CGRect, on screen: NSScreen) {
         hideTask?.cancel()
         let panel = ensurePanel()
-        model.refresh()
+        model.refresh(on: screen)
 
         let width = min(max(model.replicaWidth, 1), screen.frame.width - 32)
         let height = model.replicaHeight
         let preferredMaxX = min(screen.frame.maxX - 12, triggerFrame.maxX + 8)
         let x = min(max(preferredMaxX - width, screen.frame.minX + 2), screen.frame.maxX - width - 12)
-        let y: CGFloat
-        if triggerFrame.midY > screen.frame.midY {
-            y = screen.frame.maxY - 10 - height
-        } else {
-            y = screen.frame.minY + 10
-        }
+        let preferredY = triggerFrame.minY - 2 - height
+        let y = min(max(preferredY, screen.frame.minY + 2), screen.frame.maxY - height - 2)
 
         panel.setFrame(CGRect(x: x, y: y, width: width, height: height), display: true)
         panel.orderFrontRegardless()
@@ -133,13 +129,22 @@ final class HiddenItemsHoverBarController {
         }
 
         let hostingController = NSHostingController(rootView: HiddenItemsHoverBarView(model: model))
+        let effectView = NSVisualEffectView(frame: CGRect(x: 0, y: 0, width: 260, height: 37))
+        effectView.material = .menu
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.autoresizingMask = [.width, .height]
+        hostingController.view.frame = effectView.bounds
+        hostingController.view.autoresizingMask = [.width, .height]
+        effectView.addSubview(hostingController.view)
+
         let panel = NSPanel(
             contentRect: CGRect(x: 0, y: 0, width: 260, height: 37),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        panel.contentViewController = hostingController
+        panel.contentView = effectView
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isReleasedWhenClosed = false
@@ -215,7 +220,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         self.revealHandler = revealHandler
     }
 
-    func refresh() {
+    func refresh(on screen: NSScreen? = nil) {
         guard !isRefreshing, permissionChecker.snapshot().canRunCoreFeatures else { return }
         if let lastRefreshAt, Date().timeIntervalSince(lastRefreshAt) < 0.35 {
             return
@@ -224,14 +229,14 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         isRefreshing = true
         Task {
             defer { isRefreshing = false }
-            await refreshNow()
+            await refreshNow(on: screen)
         }
     }
 
-    func refreshNow() async {
+    func refreshNow(on screen: NSScreen? = nil) async {
         guard permissionChecker.snapshot().canRunCoreFeatures else { return }
         do {
-            let cache = try await visualCacheProvider()
+            let cache = targetScopedCache(try await visualCacheProvider(), on: screen)
             let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
                 (item.tag.stableIdentifier, item)
             })
@@ -239,8 +244,9 @@ final class HiddenItemsHoverBarModel: ObservableObject {
             let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
                 .map(\.tag.stableIdentifier)
                 .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
+            let savedHiddenUIDs = (order.hidden + order.alwaysHidden).filter { itemByUID[$0] != nil }
             rows = makeRows(
-                uids: mergedHiddenUIDs(saved: order.hidden + order.alwaysHidden, physical: physicalHiddenUIDs),
+                uids: mergedHiddenUIDs(saved: savedHiddenUIDs, physical: physicalHiddenUIDs),
                 itemByUID: itemByUID
             )
         } catch {
@@ -255,6 +261,24 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         }
         let snapshot = try await cacheController.snapshot(refreshIfNeeded: false)
         return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
+    }
+
+    private func targetScopedCache(_ cache: ItemCache, on screen: NSScreen?) -> ItemCache {
+        guard let screen else { return cache }
+        let targetFrame = screen.frame
+        let otherFrames = NSScreen.screens
+            .map(\.frame)
+            .filter { !$0.equalTo(targetFrame) }
+        let filter = MenuBarTargetDisplayFilter(
+            targetDisplayFrame: targetFrame,
+            otherDisplayFrames: otherFrames
+        )
+        return ItemCache(
+            displayID: cache.displayID,
+            visibleItems: filter.itemsOnTargetDisplay(cache.visibleItems),
+            hiddenItems: filter.itemsOnTargetDisplay(cache.hiddenItems),
+            alwaysHiddenItems: filter.itemsOnTargetDisplay(cache.alwaysHiddenItems)
+        )
     }
 
     func refreshTriggerFrame(on screen: NSScreen) {
@@ -366,7 +390,7 @@ private struct HiddenItemsHoverBarView: View {
         }
         .frame(width: model.replicaWidth, height: model.replicaHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.bar)
+        .background(Color.clear)
         .clipShape(Rectangle())
         .overlay(
             Rectangle()

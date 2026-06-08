@@ -16,11 +16,34 @@ public struct MoveDestinationResolver {
             guard let item = cache.item(withStableIdentifier: uid) else { return nil }
             return .rightOfItem(item)
         case .sectionBoundary(let section):
-            guard let item = sectionBoundaries[section] else { return nil }
-            if section == .visible {
-                return .rightOfItem(item)
+            return resolveSectionBoundary(section, sectionBoundaries: sectionBoundaries)
+        }
+    }
+
+    private func resolveSectionBoundary(
+        _ section: MenuBarSection,
+        sectionBoundaries: [MenuBarSection: MenuBarItem]
+    ) -> MoveDestination? {
+        switch section {
+        case .visible:
+            guard let boundary = sectionBoundaries[.visible] else { return nil }
+            return .rightOfItem(boundary)
+        case .hidden:
+            guard let hiddenBoundary = sectionBoundaries[.hidden] else { return nil }
+            guard let alwaysHiddenBoundary = sectionBoundaries[.alwaysHidden] else {
+                return .leftOfItem(hiddenBoundary)
             }
-            return .leftOfItem(item)
+            if alwaysHiddenBoundary.bounds.minX > hiddenBoundary.bounds.minX {
+                return .rightOfItem(hiddenBoundary)
+            }
+            return .leftOfItem(hiddenBoundary)
+        case .alwaysHidden:
+            guard let boundary = sectionBoundaries[.alwaysHidden] ?? sectionBoundaries[.hidden] else { return nil }
+            if let hiddenBoundary = sectionBoundaries[.hidden],
+               boundary.bounds.minX > hiddenBoundary.bounds.minX {
+                return .leftOfItem(hiddenBoundary)
+            }
+            return .leftOfItem(boundary)
         }
     }
 }

@@ -279,12 +279,17 @@ final class LayoutApplicationController {
                     )
                     let refreshedCache = try await cacheController.cache(boundary: boundary)
                     CoronaDebugLog.log("layout.move refreshed visible=\(refreshedCache.visibleItems.map(\.tag.stableIdentifier)) hidden=\(refreshedCache.hiddenItems.map(\.tag.stableIdentifier)) alwaysHidden=\(refreshedCache.alwaysHiddenItems.map(\.tag.stableIdentifier))")
-                    if resolvedMove.destination.isSatisfied(for: resolvedMove.plannedMove.itemUID, in: refreshedCache) {
+                    let destinationSatisfied = resolvedMove.destination.isSatisfied(for: resolvedMove.plannedMove.itemUID, in: refreshedCache)
+                    let targetSectionSatisfied = targetSectionIsSatisfied(
+                        for: resolvedMove.plannedMove,
+                        in: refreshedCache
+                    )
+                    if destinationSatisfied && targetSectionSatisfied {
                         logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: true))
                         CoronaDebugLog.log("layout.move success uid=\(resolvedMove.plannedMove.itemUID)")
                         return .moved(resolvedMove.plannedMove.itemUID)
                     }
-                    CoronaDebugLog.log("layout.move mismatch uid=\(resolvedMove.plannedMove.itemUID)")
+                    CoronaDebugLog.log("layout.move mismatch uid=\(resolvedMove.plannedMove.itemUID) destinationSatisfied=\(destinationSatisfied) targetSectionSatisfied=\(targetSectionSatisfied)")
                     lastError = MoveExecutorError.finalPositionMismatch
                 } catch {
                     CoronaDebugLog.log("layout.move error attempt=\(attempt + 1) uid=\(resolvedMove.plannedMove.itemUID) error=\(String(describing: error))")
@@ -296,6 +301,13 @@ final class LayoutApplicationController {
             CoronaDebugLog.log("layout.move failed uid=\(resolvedMove.plannedMove.itemUID) lastError=\(String(describing: lastError ?? MoveExecutorError.finalPositionMismatch))")
             return .failed(String(describing: lastError ?? MoveExecutorError.finalPositionMismatch))
         }
+    }
+
+    private func targetSectionIsSatisfied(for move: LayoutMove, in cache: ItemCache) -> Bool {
+        guard case .sectionBoundary(let section) = move.target else {
+            return true
+        }
+        return cache.section(containing: move.itemUID) == section
     }
 
     private func debugDescription(for step: LayoutApplicationStep) -> String {
@@ -604,6 +616,19 @@ private extension ItemCache {
             hiddenItems: hiddenItems.filter(\.isManageableByCorona),
             alwaysHiddenItems: alwaysHiddenItems.filter(\.isManageableByCorona)
         )
+    }
+
+    func section(containing uid: String) -> MenuBarSection? {
+        if visibleItems.contains(where: { $0.tag.stableIdentifier == uid }) {
+            return .visible
+        }
+        if hiddenItems.contains(where: { $0.tag.stableIdentifier == uid }) {
+            return .hidden
+        }
+        if alwaysHiddenItems.contains(where: { $0.tag.stableIdentifier == uid }) {
+            return .alwaysHidden
+        }
+        return nil
     }
 }
 

@@ -332,7 +332,7 @@ final class MenuBarController {
                 guard let self else {
                     return ItemCache(displayID: nil, visibleItems: [], hiddenItems: [], alwaysHiddenItems: [])
                 }
-                return try await self.captureVisualMenuBarCache()
+                return try await self.currentMenuBarCacheWithoutChangingVisibility()
             },
             visualCacheCleanup: { [weak self] in
                 self?.restoreVisualCaptureVisibility()
@@ -364,6 +364,16 @@ final class MenuBarController {
         }
 
         try? await Task.sleep(nanoseconds: 180_000_000)
+        guard let boundary = sectionController.currentBoundary() else {
+            let snapshot = try await cacheController.refresh()
+            return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])
+        }
+
+        return try await cacheController.cache(boundary: boundary)
+    }
+
+    @MainActor
+    private func currentMenuBarCacheWithoutChangingVisibility() async throws -> ItemCache {
         guard let boundary = sectionController.currentBoundary() else {
             let snapshot = try await cacheController.refresh()
             return ItemCache(displayID: snapshot.displayID, visibleItems: snapshot.items, hiddenItems: [], alwaysHiddenItems: [])

@@ -57,6 +57,11 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
             return NSImage(cgImage: cgImage, size: item.bounds.size)
         }
 
+        if let cgImage = skyLightImageProvider.image(for: windowID, bounds: .null, options: options),
+           hasVisibleContent(cgImage) {
+            return NSImage(cgImage: cgImage, size: item.bounds.size)
+        }
+
         return nil
     }
 
