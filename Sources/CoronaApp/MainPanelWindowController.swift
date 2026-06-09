@@ -235,6 +235,8 @@ final class MainPanelViewModel: ObservableObject {
     private var pendingAutoApply = false
     private var pendingAutoApplyUID: String?
     private var isRefreshing = false
+    private var activeRefreshTask: Task<Void, Never>?
+    private var refreshGeneration = 0
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
     private var didExpandMenuBarForRendering = false
@@ -307,6 +309,10 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func refresh(showLoading: Bool, allowVisibilityChanges: Bool) {
+        guard !isApplying else {
+            logRefresh("main.refresh skippedApplying", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
+            return
+        }
         guard !isRefreshing else { return }
         let snapshot = permissionChecker.snapshot()
         canRunCoreFeatures = snapshot.canRunCoreFeatures
@@ -322,15 +328,25 @@ final class MainPanelViewModel: ObservableObject {
         }
         isRefreshing = true
         errorMessage = nil
-        Task {
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        activeRefreshTask = Task {
             defer {
-                isRefreshing = false
-                if showLoading {
-                    isLoading = false
+                if generation == refreshGeneration {
+                    isRefreshing = false
+                    activeRefreshTask = nil
+                    if showLoading {
+                        isLoading = false
+                    }
                 }
             }
             do {
+                guard !Task.isCancelled, !isApplying else { return }
                 let scannedCache = try await currentCache(allowVisibilityChanges: allowVisibilityChanges)
+                guard !Task.isCancelled, !isApplying else {
+                    logRefresh("main.refresh discardedDuringApply", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
+                    return
+                }
                 let cache = allowVisibilityChanges ? scannedCache : mergedReadOnlyCache(scannedCache)
                 logRefresh("main.refresh cache mode=\(allowVisibilityChanges ? "full" : "readOnly") visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count) all=\(cache.allItems.count) scannedVisible=\(scannedCache.visibleItems.count) scannedHidden=\(scannedCache.hiddenItems.count) scannedAlwaysHidden=\(scannedCache.alwaysHiddenItems.count)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
                 let manageableItems = cache.allItems.filter { item in
@@ -510,11 +526,21 @@ final class MainPanelViewModel: ObservableObject {
             return
         }
 
+        cancelActiveRefresh()
         isApplying = true
         statusMessage = nil
         Task {
             await runAutoApplyLoop(initialOrder: sanitizedOrder, movedUID: movedUID)
         }
+    }
+
+    private func cancelActiveRefresh() {
+        activeRefreshTask?.cancel()
+        activeRefreshTask = nil
+        refreshGeneration += 1
+        isRefreshing = false
+        isLoading = false
+        CoronaDebugLog.verbose("main.refresh cancelledForApply")
     }
 
     private func persistDraft() -> SectionOrder {
@@ -801,6 +827,7 @@ final class MainPanelViewModel: ObservableObject {
         CoronaDebugLog.log("main.render.expandForFallback count=\(failedUIDs.count) uids=\(failedUIDs)")
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, !isApplying else { return }
             refresh(showLoading: false, allowVisibilityChanges: false)
         }
     }
