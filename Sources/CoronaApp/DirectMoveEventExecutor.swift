@@ -30,26 +30,32 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         await Self.gate.acquire()
         await SnapshotPollingGate.shared.acquireSuspension()
         CoronaDebugLog.log("executor.itemEvent gate acquired uid=\(item.tag.stableIdentifier)")
-        let originalMouseLocation = currentMouseLocation()
-        setMouseCursorHidden(originalMouseLocation != nil)
-        defer {
-            Task {
-                await SnapshotPollingGate.shared.releaseSuspension()
-                await Self.gate.release()
-                CoronaDebugLog.log("executor.itemEvent gate released uid=\(item.tag.stableIdentifier)")
-            }
-        }
-        defer {
-            restoreMouseLocation(originalMouseLocation)
-        }
 
+        let cursorTransaction = MenuBarMoveCursorTransaction.begin()
+        let result = await runMoveTransaction(
+            item: item,
+            destination: destination,
+            maxAttempts: maxAttempts
+        )
+        await cursorTransaction.finish()
+        await SnapshotPollingGate.shared.releaseSuspension()
+        await Self.gate.release()
+        CoronaDebugLog.log("executor.itemEvent gate released uid=\(item.tag.stableIdentifier)")
+        try result.get()
+    }
+
+    private func runMoveTransaction(
+        item: MenuBarItem,
+        destination: MoveDestination,
+        maxAttempts: Int
+    ) async -> Result<Void, Error> {
         let attempts = max(1, maxAttempts)
         var lastError: Error?
         for attempt in 1...attempts {
             do {
                 try await postMenuBarItemEvents(item: item, to: destination)
                 CoronaDebugLog.log("executor.itemEvent posted uid=\(item.tag.stableIdentifier) attempt=\(attempt)")
-                return
+                return .success(())
             } catch {
                 CoronaDebugLog.log("executor.itemEvent error uid=\(item.tag.stableIdentifier) attempt=\(attempt) error=\(String(describing: error))")
                 lastError = error
@@ -57,7 +63,7 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
             }
         }
 
-        throw lastError ?? MoveExecutorError.timedOut
+        return .failure(lastError ?? MoveExecutorError.timedOut)
     }
 
     private func postMenuBarItemEvents(item: MenuBarItem, to destination: MoveDestination) async throws {
@@ -165,31 +171,6 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         item.sourcePID ?? item.ownerPID
     }
 
-    private func currentMouseLocation() -> CGPoint? {
-        CGEvent(source: nil)?.location
-    }
-
-    private func restoreMouseLocation(_ location: CGPoint?) {
-        guard let location else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20)) {
-            let error = CGWarpMouseCursorPosition(location)
-            if error == .success {
-                CoronaDebugLog.verbose("executor.itemEvent restoredMouse location=\(location.debugDescription)")
-            } else {
-                CoronaDebugLog.log("executor.itemEvent restoreMouseFailed error=\(error.rawValue) location=\(location.debugDescription)")
-            }
-            setMouseCursorHidden(false)
-        }
-    }
-
-    private func setMouseCursorHidden(_ hidden: Bool) {
-        let error = hidden
-            ? CGDisplayHideCursor(CGMainDisplayID())
-            : CGDisplayShowCursor(CGMainDisplayID())
-        guard error != .success else { return }
-        CoronaDebugLog.log("executor.itemEvent cursorVisibilityFailed hidden=\(hidden) error=\(error.rawValue)")
-    }
-
     private func permitLocalEvents(on source: CGEventSource) {
         source.setLocalEventsFilterDuringSuppressionState(.permitAllEvents, state: .eventSuppressionStateSuppressionInterval)
         source.setLocalEventsFilterDuringSuppressionState(.permitAllEvents, state: .eventSuppressionStateRemoteMouseDrag)
@@ -265,6 +246,56 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         case .rightOfItem(let item):
             return "rightOf uid=\(item.tag.stableIdentifier) bounds=\(item.bounds.debugDescription)"
         }
+    }
+}
+
+private struct MenuBarMoveCursorTransaction {
+    private static let restoreDelayNanoseconds: UInt64 = 20_000_000
+
+    private let originalLocation: CGPoint?
+    private let cursorHidden: Bool
+
+    static func begin() -> MenuBarMoveCursorTransaction {
+        let originalLocation = CGEvent(source: nil)?.location
+        let cursorHidden = originalLocation != nil
+        if cursorHidden {
+            setMouseCursorHidden(true)
+        }
+        return MenuBarMoveCursorTransaction(
+            originalLocation: originalLocation,
+            cursorHidden: cursorHidden
+        )
+    }
+
+    func finish() async {
+        guard let originalLocation else {
+            return
+        }
+
+        restoreMouseLocation(originalLocation)
+        try? await Task.sleep(nanoseconds: Self.restoreDelayNanoseconds)
+        restoreMouseLocation(originalLocation)
+
+        if cursorHidden {
+            Self.setMouseCursorHidden(false)
+        }
+    }
+
+    private func restoreMouseLocation(_ location: CGPoint) {
+        let error = CGWarpMouseCursorPosition(location)
+        if error == .success {
+            CoronaDebugLog.verbose("executor.itemEvent restoredMouse location=\(location.debugDescription)")
+        } else {
+            CoronaDebugLog.log("executor.itemEvent restoreMouseFailed error=\(error.rawValue) location=\(location.debugDescription)")
+        }
+    }
+
+    private static func setMouseCursorHidden(_ hidden: Bool) {
+        let error = hidden
+            ? CGDisplayHideCursor(CGMainDisplayID())
+            : CGDisplayShowCursor(CGMainDisplayID())
+        guard error != .success else { return }
+        CoronaDebugLog.log("executor.itemEvent cursorVisibilityFailed hidden=\(hidden) error=\(error.rawValue)")
     }
 }
 
