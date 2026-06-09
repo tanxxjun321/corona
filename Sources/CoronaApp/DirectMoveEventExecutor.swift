@@ -2,7 +2,6 @@ import AppKit
 
 struct MenuBarItemEventExecutor: MoveEventExecutor {
     private enum Constants {
-        static let offscreenStartPoint = CGPoint(x: 20_000, y: 20_000)
         static let syntheticEventMarker: Int64 = 0x434f524f4e41
         static let eventTimeoutNanoseconds: UInt64 = 80_000_000
         static let frameCheckTimeoutNanoseconds: UInt64 = 120_000_000
@@ -95,10 +94,11 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
 
         let initialBounds = item.bounds
         let targetItem = destination.targetItem
+        let cursorPoint = currentMouseLocation() ?? CGPoint(x: item.bounds.midX, y: item.bounds.midY)
 
         guard let mouseDown = CGEvent.menuBarItemEvent(
             type: .move(.leftMouseDown),
-            location: Constants.offscreenStartPoint,
+            location: cursorPoint,
             targetItem: item,
             pid: pid,
             source: source,
@@ -136,7 +136,7 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
             )
         } catch {
             let fallbackBounds = currentBounds(for: item)
-            let fallbackPoint = CGPoint(x: fallbackBounds.midX, y: fallbackBounds.midY)
+            let fallbackPoint = currentMouseLocation() ?? CGPoint(x: fallbackBounds.midX, y: fallbackBounds.midY)
             if let fallback = CGEvent.menuBarItemEvent(
                 type: .move(.leftMouseUp),
                 location: fallbackPoint,
@@ -156,7 +156,7 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
               let pid = eventPID(for: item) else {
             return
         }
-        let point = CGPoint(x: item.bounds.midX, y: item.bounds.midY)
+        let point = currentMouseLocation() ?? CGPoint(x: item.bounds.midX, y: item.bounds.midY)
         guard
             let mouseDown = CGEvent.menuBarItemEvent(
                 type: .move(.leftMouseDown),
@@ -192,6 +192,10 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
 
     private func currentBounds(for item: MenuBarItem) -> CGRect {
         MenuBarWindowFrameReader.frame(for: item.windowID) ?? item.bounds
+    }
+
+    private func currentMouseLocation() -> CGPoint? {
+        CGEvent(source: nil)?.location
     }
 
     private func eventPID(for item: MenuBarItem) -> pid_t? {
