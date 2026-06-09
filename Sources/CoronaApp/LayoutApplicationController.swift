@@ -107,26 +107,9 @@ final class LayoutApplicationController {
         layoutStore.saveSavedSectionOrder(desiredOrder)
         layoutStore.saveKnownItemIdentifiers(Set(desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden))
         CoronaDebugLog.log("layout.applySingleMove savedIntent uid=\(uid) visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
-        let firstResult = await applyNextStep(preferredItemUID: uid)
+        let firstResult = await applyPreferredStep(uid: uid)
         CoronaDebugLog.log("layout.applySingleMove preferredResult uid=\(uid) result=\(firstResult.statusTitle)")
-        switch firstResult {
-        case .moved:
-            let remainingResult = await applySavedLayout(maxSteps: 19)
-            switch remainingResult {
-            case .satisfied:
-                return firstResult
-            case .applied(let count):
-                return .applied(count + 1)
-            case .moved:
-                return .applied(2)
-            case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
-                return remainingResult
-            }
-        case .satisfied:
-            return await applySavedLayout()
-        case .waitingForItem, .waitingForDestination, .missingBoundary, .failed, .applied:
-            return firstResult
-        }
+        return firstResult
     }
 
     func reveal(uid: String, maxSteps: Int = 8) async -> LayoutApplicationResult {
@@ -220,6 +203,65 @@ final class LayoutApplicationController {
             }
         } catch {
             CoronaDebugLog.log("layout.applyNextStep failed error=\(String(describing: error))")
+            return .failed(String(describing: error))
+        }
+    }
+
+    private func applyPreferredStep(uid: String) async -> LayoutApplicationResult {
+        guard let boundary = await boundaryProvider() else {
+            CoronaDebugLog.log("layout.applyPreferredStep missingBoundary uid=\(uid)")
+            return .missingBoundary
+        }
+
+        do {
+            let cache = try await cacheController.cache(boundary: boundary)
+            guard boundary.isOnSameDisplay(as: cache.displayID) else {
+                CoronaDebugLog.log("layout.applyPreferredStep boundaryDisplayMismatch uid=\(uid) displayID=\(cache.displayID.map(String.init) ?? "nil")")
+                return .missingBoundary
+            }
+
+            let manageableCache = cache.keepingOnlyManageableItems()
+            let preference = layoutPreference(pruningUnavailableItemsIn: manageableCache)
+            let currentOrder = SectionOrder(cache: manageableCache)
+            let desiredOrder = LayoutPlanner().mergedOrder(cache: manageableCache, preference: preference)
+            CoronaDebugLog.log("layout.applyPreferredStep uid=\(uid) current visible=\(currentOrder.visible) hidden=\(currentOrder.hidden) alwaysHidden=\(currentOrder.alwaysHidden)")
+            CoronaDebugLog.log("layout.applyPreferredStep uid=\(uid) desired visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
+
+            guard let plannedMove = LayoutPlanner().nextMove(
+                currentOrder: currentOrder,
+                desiredOrder: desiredOrder,
+                preferredItemUID: uid
+            ) else {
+                CoronaDebugLog.log("layout.applyPreferredStep satisfied uid=\(uid)")
+                return .satisfied
+            }
+
+            guard plannedMove.itemUID == uid else {
+                CoronaDebugLog.log("layout.applyPreferredStep ignoredUnrelated preferred=\(uid) planned=\(plannedMove.itemUID)")
+                return .satisfied
+            }
+
+            guard let item = manageableCache.item(withStableIdentifier: plannedMove.itemUID) else {
+                return .waitingForItem(plannedMove.itemUID)
+            }
+
+            guard let destination = MoveDestinationResolver().resolve(
+                target: plannedMove.target,
+                cache: manageableCache,
+                sectionBoundaries: await boundaryItemsProvider()
+            ) else {
+                return .waitingForDestination
+            }
+
+            let step = LayoutApplicationStep.move(ResolvedLayoutMove(
+                plannedMove: plannedMove,
+                item: item,
+                destination: destination
+            ))
+            CoronaDebugLog.log("layout.applyPreferredStep planned=\(debugDescription(for: step))")
+            return await apply(step: step, cache: manageableCache, boundary: boundary)
+        } catch {
+            CoronaDebugLog.log("layout.applyPreferredStep failed uid=\(uid) error=\(String(describing: error))")
             return .failed(String(describing: error))
         }
     }
