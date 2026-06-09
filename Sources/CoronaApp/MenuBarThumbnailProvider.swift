@@ -74,9 +74,6 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
     func thumbnailResult(for item: MenuBarItem) -> MenuBarThumbnailResult {
         let settings = settingsStore.load()
         let permissions = permissionChecker.snapshot()
-        guard !MenuBarVisualCaptureGate.isSuspended else {
-            return MenuBarThumbnailResult(image: fallbackImage(for: item), isPixelPreview: false)
-        }
         guard settings.enableScreenRecordingPreviews,
               permissions.canShowPixelPreviews,
               let image = windowImage(for: item) else {
