@@ -408,7 +408,7 @@ final class MainPanelViewModel: ObservableObject {
     func move(uid: String, to section: MenuBarSection, at index: Int) {
         guard canMove(uid: uid, to: section) else { return }
         CoronaDebugLog.log("main.move uid=\(uid) section=\(section) index=\(index)")
-        draft.move(uid, to: section, at: desiredInsertionIndex(section: section, displayedIndex: index))
+        draft.move(uid, to: section, at: desiredInsertionIndex(uid: uid, section: section, displayedIndex: index))
         selectedUID = uid
         rebuildRows()
         persistAndApplyDraft(movedUID: uid)
@@ -420,7 +420,8 @@ final class MainPanelViewModel: ObservableObject {
                 .removingCoronaSelfItems()
                 .removingLegacyAXGeneratedItems()
         )
-        let placement = newItemsPlacement(for: section, index: index, order: sanitizedOrder)
+        let canonicalIndex = canonicalInsertionIndex(section: section, displayedIndex: index, itemCount: sanitizedOrder[section].count)
+        let placement = newItemsPlacement(for: section, index: canonicalIndex, order: sanitizedOrder)
         var settings = settingsStore.load()
         settings.newItemsSection = NewItemsSection(section)
         settings.newItemsPlacement = placement
@@ -436,40 +437,52 @@ final class MainPanelViewModel: ObservableObject {
         guard section == newItemsSection else { return nil }
         switch newItemsPlacement {
         case .prepend:
-            return 0
+            return displayedMarkerIndex(section: section, canonicalIndex: 0, itemCount: rowUIDs.count)
         case .append:
-            return rowUIDs.count
+            return displayedMarkerIndex(section: section, canonicalIndex: rowUIDs.count, itemCount: rowUIDs.count)
         case .leftOf(let anchor):
-            return rowUIDs.firstIndex(of: anchor) ?? rowUIDs.count
+            let canonicalIndex = draft.order[section].firstIndex(of: anchor) ?? rowUIDs.count
+            return displayedMarkerIndex(section: section, canonicalIndex: canonicalIndex, itemCount: rowUIDs.count)
         case .rightOf(let anchor):
-            return rowUIDs.firstIndex(of: anchor).map { min($0 + 1, rowUIDs.count) } ?? rowUIDs.count
+            let canonicalIndex = draft.order[section]
+                .firstIndex(of: anchor)
+                .map { min($0 + 1, rowUIDs.count) } ?? rowUIDs.count
+            return displayedMarkerIndex(section: section, canonicalIndex: canonicalIndex, itemCount: rowUIDs.count)
         }
     }
 
-    private func desiredInsertionIndex(section: MenuBarSection, displayedIndex: Int) -> Int {
-        let displayedUIDs = rows
-            .filter { $0.desiredSection == section }
-            .map(\.uid)
+    private func desiredInsertionIndex(uid: String, section: MenuBarSection, displayedIndex: Int) -> Int {
         let targetOrder = draft.order[section]
-
-        if displayedIndex <= 0 {
-            return 0
-        }
-        if displayedIndex >= displayedUIDs.count {
-            return targetOrder.count
+        guard section == .hidden else {
+            return max(0, min(displayedIndex, targetOrder.count))
         }
 
-        let previousUID = displayedUIDs[displayedIndex - 1]
-        if let previousIndex = targetOrder.firstIndex(of: previousUID) {
-            return targetOrder.index(after: previousIndex)
+        guard draft.order.section(containing: uid) == section,
+              let previousIndex = targetOrder.firstIndex(of: uid) else {
+            return canonicalInsertionIndex(section: section, displayedIndex: displayedIndex, itemCount: targetOrder.count)
         }
 
-        let nextUID = displayedUIDs[displayedIndex]
-        if let nextIndex = targetOrder.firstIndex(of: nextUID) {
-            return nextIndex
+        let finalCanonicalIndex = max(0, min(targetOrder.count - 1, targetOrder.count - 1 - displayedIndex))
+        if previousIndex <= finalCanonicalIndex {
+            return finalCanonicalIndex + 1
         }
+        return finalCanonicalIndex
+    }
 
-        return targetOrder.count
+    private func canonicalInsertionIndex(section: MenuBarSection, displayedIndex: Int, itemCount: Int) -> Int {
+        let clampedIndex = max(0, min(displayedIndex, itemCount))
+        if section == .hidden {
+            return itemCount - clampedIndex
+        }
+        return clampedIndex
+    }
+
+    private func displayedMarkerIndex(section: MenuBarSection, canonicalIndex: Int, itemCount: Int) -> Int {
+        let clampedIndex = max(0, min(canonicalIndex, itemCount))
+        if section == .hidden {
+            return itemCount - clampedIndex
+        }
+        return clampedIndex
     }
 
     func apply() {
