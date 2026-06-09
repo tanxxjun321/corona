@@ -95,23 +95,22 @@ final class LayoutApplicationPlannerTests: XCTestCase {
     func testUsesSavedVisibleOrderWhenPhysicalVisibleOrderDiffers() {
         let a = makeItem(windowID: 1, namespace: "app", title: "A", sourcePID: 10)
         let b = makeItem(windowID: 2, namespace: "app", title: "B", sourcePID: 10)
-        let visibleBoundary = makeItem(windowID: 99, namespace: "control", title: "visible", sourcePID: 10)
         let cache = ItemCache(displayID: nil, visibleItems: [b, a], hiddenItems: [], alwaysHiddenItems: [])
         let preference = LayoutPreference(savedOrder: SectionOrder(visible: ["app:A", "app:B"]))
 
         let step = LayoutApplicationPlanner().nextStep(
             cache: cache,
             preference: preference,
-            sectionBoundaries: [.visible: visibleBoundary]
+            sectionBoundaries: [:]
         )
 
         XCTAssertEqual(
             step,
             .move(
                 ResolvedLayoutMove(
-                    plannedMove: LayoutMove(itemUID: "app:A", target: .sectionBoundary(.visible)),
+                    plannedMove: LayoutMove(itemUID: "app:A", target: .leftOfUID("app:B")),
                     item: a,
-                    destination: .rightOfItem(visibleBoundary)
+                    destination: .leftOfItem(b)
                 )
             )
         )

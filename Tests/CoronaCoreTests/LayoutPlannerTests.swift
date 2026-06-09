@@ -91,6 +91,28 @@ final class LayoutPlannerTests: XCTestCase {
         XCTAssertEqual(move, LayoutMove(itemUID: "c", target: .sectionBoundary(.hidden)))
     }
 
+    func testNextVisibleMoveToFirstItemUsesNextDesiredNeighbor() {
+        let current = SectionOrder(visible: ["a", "b", "c"])
+        let desired = SectionOrder(visible: ["c", "a", "b"])
+
+        let move = LayoutPlanner().nextMove(currentOrder: current, desiredOrder: desired)
+
+        XCTAssertEqual(move, LayoutMove(itemUID: "c", target: .leftOfUID("a")))
+    }
+
+    func testPreferredVisibleMoveToFirstItemUsesNextDesiredNeighbor() {
+        let current = SectionOrder(visible: ["a", "b", "c", "d"])
+        let desired = SectionOrder(visible: ["c", "a", "b", "d"])
+
+        let move = LayoutPlanner().nextMove(
+            currentOrder: current,
+            desiredOrder: desired,
+            preferredItemUID: "c"
+        )
+
+        XCTAssertEqual(move, LayoutMove(itemUID: "c", target: .leftOfUID("a")))
+    }
+
     func testNextCrossSectionMoveUsesTargetSectionBoundary() {
         let current = SectionOrder(visible: ["a"], hidden: ["b"])
         let desired = SectionOrder(visible: [], hidden: ["a", "b"])

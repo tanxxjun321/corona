@@ -103,13 +103,17 @@ public struct LayoutPlanner {
     }
 
     private func target(for uid: String, in section: MenuBarSection, desiredOrder: SectionOrder) -> LayoutTarget {
+        let desiredSectionOrder = desiredOrder[section]
         if section == .visible {
-            guard let previous = previousUID(before: uid, in: desiredOrder[section]) else {
+            guard let previous = previousUID(before: uid, in: desiredSectionOrder) else {
+                if let next = nextUID(after: uid, in: desiredSectionOrder) {
+                    return .leftOfUID(next)
+                }
                 return .sectionBoundary(section)
             }
             return .rightOfUID(previous)
         }
-        guard let previous = previousUID(before: uid, in: desiredOrder[section]) else {
+        guard let previous = previousUID(before: uid, in: desiredSectionOrder) else {
             return .sectionBoundary(section)
         }
         return .rightOfUID(previous)
@@ -162,6 +166,9 @@ public struct LayoutPlanner {
             }
 
             if desiredIndex == 0 {
+                if section == .visible, desired.indices.contains(desired.index(after: desiredIndex)) {
+                    return LayoutMove(itemUID: uid, target: .leftOfUID(desired[desired.index(after: desiredIndex)]))
+                }
                 return LayoutMove(itemUID: uid, target: .sectionBoundary(section))
             }
             return LayoutMove(itemUID: uid, target: .rightOfUID(desired[desiredIndex - 1]))
@@ -206,5 +213,16 @@ public struct LayoutPlanner {
             return nil
         }
         return order[order.index(before: index)]
+    }
+
+    private func nextUID(after uid: String, in order: [String]) -> String? {
+        guard let index = order.firstIndex(of: uid) else {
+            return nil
+        }
+        let nextIndex = order.index(after: index)
+        guard nextIndex < order.endIndex else {
+            return nil
+        }
+        return order[nextIndex]
     }
 }
