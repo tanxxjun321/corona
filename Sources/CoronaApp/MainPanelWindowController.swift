@@ -454,7 +454,13 @@ final class MainPanelViewModel: ObservableObject {
     private func desiredInsertionIndex(uid: String, section: MenuBarSection, displayedIndex: Int) -> Int {
         let targetOrder = draft.order[section]
         guard section == .hidden else {
-            return max(0, min(displayedIndex, targetOrder.count))
+            let clampedIndex = max(0, min(displayedIndex, targetOrder.count))
+            guard draft.order.section(containing: uid) == section,
+                  let previousIndex = targetOrder.firstIndex(of: uid),
+                  previousIndex < clampedIndex else {
+                return clampedIndex
+            }
+            return clampedIndex + 1
         }
 
         guard draft.order.section(containing: uid) == section,
