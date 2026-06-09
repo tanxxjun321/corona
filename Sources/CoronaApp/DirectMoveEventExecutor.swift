@@ -75,35 +75,15 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
 
         let initialBounds = item.bounds
         let targetItem = destination.targetItem
-        let endPoint = destinationPoint(for: destination)
-        let fallbackPoint = CGPoint(x: item.bounds.midX, y: item.bounds.midY)
 
-        guard
-            let mouseDown = CGEvent.menuBarItemEvent(
-                type: .move(.leftMouseDown),
-                location: Constants.offscreenStartPoint,
-                targetItem: item,
-                pid: pid,
-                source: source,
-                syntheticMarker: Constants.syntheticEventMarker
-            ),
-            let mouseUp = CGEvent.menuBarItemEvent(
-                type: .move(.leftMouseUp),
-                location: endPoint,
-                targetItem: targetItem,
-                pid: pid,
-                source: source,
-                syntheticMarker: Constants.syntheticEventMarker
-            ),
-            let fallback = CGEvent.menuBarItemEvent(
-                type: .move(.leftMouseUp),
-                location: fallbackPoint,
-                targetItem: item,
-                pid: pid,
-                source: source,
-                syntheticMarker: Constants.syntheticEventMarker
-            )
-        else {
+        guard let mouseDown = CGEvent.menuBarItemEvent(
+            type: .move(.leftMouseDown),
+            location: Constants.offscreenStartPoint,
+            targetItem: item,
+            pid: pid,
+            source: source,
+            syntheticMarker: Constants.syntheticEventMarker
+        ) else {
             throw MoveExecutorError.destinationUnavailable
         }
 
@@ -115,6 +95,18 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
                 waitingForFrameChangeOf: item,
                 initialBounds: initialBounds
             )
+            let targetBounds = currentBounds(for: targetItem)
+            let endPoint = destinationPoint(for: destination, targetBounds: targetBounds)
+            guard let mouseUp = CGEvent.menuBarItemEvent(
+                type: .move(.leftMouseUp),
+                location: endPoint,
+                targetItem: targetItem,
+                pid: pid,
+                source: source,
+                syntheticMarker: Constants.syntheticEventMarker
+            ) else {
+                throw MoveExecutorError.destinationUnavailable
+            }
             try await scromble(
                 mouseUp,
                 from: .pid(pid),
@@ -123,7 +115,18 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
                 initialBounds: initialBounds
             )
         } catch {
-            try? await postAndWait(fallback, to: .sessionEventTap)
+            let fallbackBounds = currentBounds(for: item)
+            let fallbackPoint = CGPoint(x: fallbackBounds.midX, y: fallbackBounds.midY)
+            if let fallback = CGEvent.menuBarItemEvent(
+                type: .move(.leftMouseUp),
+                location: fallbackPoint,
+                targetItem: item,
+                pid: pid,
+                source: source,
+                syntheticMarker: Constants.syntheticEventMarker
+            ) {
+                try? await postAndWait(fallback, to: .sessionEventTap)
+            }
             throw error
         }
     }
@@ -158,13 +161,17 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         try? await scromble(mouseUp, from: .pid(pid), to: .sessionEventTap)
     }
 
-    private func destinationPoint(for destination: MoveDestination) -> CGPoint {
+    private func destinationPoint(for destination: MoveDestination, targetBounds: CGRect) -> CGPoint {
         switch destination {
-        case .leftOfItem(let item):
-            return CGPoint(x: item.bounds.minX, y: item.bounds.midY)
-        case .rightOfItem(let item):
-            return CGPoint(x: item.bounds.maxX, y: item.bounds.midY)
+        case .leftOfItem:
+            return CGPoint(x: targetBounds.minX, y: targetBounds.midY)
+        case .rightOfItem:
+            return CGPoint(x: targetBounds.maxX, y: targetBounds.midY)
         }
+    }
+
+    private func currentBounds(for item: MenuBarItem) -> CGRect {
+        MenuBarWindowFrameReader.frame(for: item.windowID) ?? item.bounds
     }
 
     private func eventPID(for item: MenuBarItem) -> pid_t? {
