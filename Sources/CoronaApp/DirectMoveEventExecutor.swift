@@ -31,6 +31,7 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         await SnapshotPollingGate.shared.acquireSuspension()
         CoronaDebugLog.log("executor.itemEvent gate acquired uid=\(item.tag.stableIdentifier)")
         let originalMouseLocation = currentMouseLocation()
+        setMouseCursorHidden(originalMouseLocation != nil)
         defer {
             Task {
                 await SnapshotPollingGate.shared.releaseSuspension()
@@ -177,7 +178,16 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
             } else {
                 CoronaDebugLog.log("executor.itemEvent restoreMouseFailed error=\(error.rawValue) location=\(location.debugDescription)")
             }
+            setMouseCursorHidden(false)
         }
+    }
+
+    private func setMouseCursorHidden(_ hidden: Bool) {
+        let error = hidden
+            ? CGDisplayHideCursor(CGMainDisplayID())
+            : CGDisplayShowCursor(CGMainDisplayID())
+        guard error != .success else { return }
+        CoronaDebugLog.log("executor.itemEvent cursorVisibilityFailed hidden=\(hidden) error=\(error.rawValue)")
     }
 
     private func permitLocalEvents(on source: CGEventSource) {
