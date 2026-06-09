@@ -43,29 +43,54 @@ final class MenuBarController {
             var y: Int
             var width: Int
             var height: Int
+
+            init(uid: String, frame: CGRect) {
+                self.uid = uid
+                x = Int(frame.minX.rounded())
+                y = Int(frame.minY.rounded())
+                width = Int(frame.width.rounded())
+                height = Int(frame.height.rounded())
+            }
         }
 
-        init(cache: ItemCache) {
-            items = cache.allItems
+        init(cache: ItemCache, boundary: SectionBoundary?) {
+            let displayFrame = cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
+            let visibleItems = cache.allItems.filter { item in
+                item.isOnScreen && item.bounds.intersects(displayFrame)
+            }
+            let boundaryItems = Self.items(for: boundary)
+
+            items = (visibleItems.map(Self.item(for:)) + boundaryItems)
                 .sorted { lhs, rhs in
-                    if lhs.bounds.minX != rhs.bounds.minX {
-                        return lhs.bounds.minX < rhs.bounds.minX
+                    if lhs.x != rhs.x {
+                        return lhs.x < rhs.x
                     }
-                    if lhs.bounds.minY != rhs.bounds.minY {
-                        return lhs.bounds.minY < rhs.bounds.minY
+                    if lhs.y != rhs.y {
+                        return lhs.y < rhs.y
                     }
-                    return lhs.tag.stableIdentifier < rhs.tag.stableIdentifier
-                }
-                .map { item in
-                    Item(
-                        uid: item.tag.stableIdentifier,
-                        x: Int(item.bounds.minX.rounded()),
-                        y: Int(item.bounds.minY.rounded()),
-                        width: Int(item.bounds.width.rounded()),
-                        height: Int(item.bounds.height.rounded())
-                    )
+                    return lhs.uid < rhs.uid
                 }
         }
+
+        private static func item(for item: MenuBarItem) -> Item {
+            Item(uid: item.tag.stableIdentifier, frame: item.bounds)
+        }
+
+        private static func items(for boundary: SectionBoundary?) -> [Item] {
+            guard let boundary else { return [] }
+            var items = [Item(uid: "com.ltz.corona.control:hidden", frame: boundary.hiddenControlBounds)]
+            if let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds {
+                items.append(Item(uid: "com.ltz.corona.control:alwaysHidden", frame: alwaysHiddenControlBounds))
+            }
+            return items
+        }
+    }
+
+    private enum StabilityTiming {
+        static let initialDelayNanoseconds: UInt64 = 180_000_000
+        static let pollIntervalNanoseconds: UInt64 = 100_000_000
+        static let requiredStableSamples = 4
+        static let maxPolls = 18
     }
 
     init(
@@ -646,16 +671,16 @@ final class MenuBarController {
     private func waitForMenuBarLayoutToSettle() async {
         var previousSignature: StabilitySignature?
         var stableSampleCount = 0
-        let requiredStableSamples = 3
-        let maxPolls = 12
 
-        for _ in 0..<maxPolls where !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: StabilityTiming.initialDelayNanoseconds)
+
+        for _ in 0..<StabilityTiming.maxPolls where !Task.isCancelled {
             do {
                 let cache = try await currentMenuBarCacheWithoutChangingVisibility()
-                let signature = StabilitySignature(cache: cache)
+                let signature = StabilitySignature(cache: cache, boundary: sectionController.currentBoundary())
                 if previousSignature == signature {
                     stableSampleCount += 1
-                    if stableSampleCount >= requiredStableSamples {
+                    if stableSampleCount >= StabilityTiming.requiredStableSamples {
                         CoronaDebugLog.verbose("main.menuStable items=\(signature.items.count) samples=\(stableSampleCount)")
                         return
                     }
@@ -667,7 +692,7 @@ final class MenuBarController {
                 CoronaDebugLog.log("main.menuStabilityCheckFailed error=\(String(describing: error))")
                 return
             }
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try? await Task.sleep(nanoseconds: StabilityTiming.pollIntervalNanoseconds)
         }
 
         CoronaDebugLog.log("main.menuStabilityTimeout")

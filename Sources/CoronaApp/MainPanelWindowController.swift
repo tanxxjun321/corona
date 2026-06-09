@@ -174,26 +174,46 @@ private struct MenuBarStabilitySignature: Equatable {
 
     var items: [Item]
 
-    init(cache: ItemCache) {
-        items = cache.allItems
+    init(cache: ItemCache, boundary: SectionBoundary?) {
+        let displayFrame = cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
+        let visibleItems = cache.allItems.filter { item in
+            item.isOnScreen && item.bounds.intersects(displayFrame)
+        }
+        let boundaryItems = Self.items(for: boundary)
+
+        items = (visibleItems.map(Self.item(for:)) + boundaryItems)
             .sorted { lhs, rhs in
-                if lhs.bounds.minX != rhs.bounds.minX {
-                    return lhs.bounds.minX < rhs.bounds.minX
+                if lhs.x != rhs.x {
+                    return lhs.x < rhs.x
                 }
-                if lhs.bounds.minY != rhs.bounds.minY {
-                    return lhs.bounds.minY < rhs.bounds.minY
+                if lhs.y != rhs.y {
+                    return lhs.y < rhs.y
                 }
-                return lhs.tag.stableIdentifier < rhs.tag.stableIdentifier
+                return lhs.uid < rhs.uid
             }
-            .map { item in
-                Item(
-                    uid: item.tag.stableIdentifier,
-                    x: Int(item.bounds.minX.rounded()),
-                    y: Int(item.bounds.minY.rounded()),
-                    width: Int(item.bounds.width.rounded()),
-                    height: Int(item.bounds.height.rounded())
-                )
-            }
+    }
+
+    private static func item(for item: MenuBarItem) -> Item {
+        Item(uid: item.tag.stableIdentifier, frame: item.bounds)
+    }
+
+    private static func items(for boundary: SectionBoundary?) -> [Item] {
+        guard let boundary else { return [] }
+        var items = [Item(uid: "com.ltz.corona.control:hidden", frame: boundary.hiddenControlBounds)]
+        if let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds {
+            items.append(Item(uid: "com.ltz.corona.control:alwaysHidden", frame: alwaysHiddenControlBounds))
+        }
+        return items
+    }
+}
+
+private extension MenuBarStabilitySignature.Item {
+    init(uid: String, frame: CGRect) {
+        self.uid = uid
+        x = Int(frame.minX.rounded())
+        y = Int(frame.minY.rounded())
+        width = Int(frame.width.rounded())
+        height = Int(frame.height.rounded())
     }
 }
 
@@ -201,9 +221,10 @@ private struct MenuBarStabilitySignature: Equatable {
 final class MainPanelViewModel: ObservableObject {
     private enum Constants {
         static let menuStabilityPollIntervalNanoseconds: UInt64 = 120_000_000
+        static let menuStabilityInitialDelayNanoseconds: UInt64 = 180_000_000
         static let menuStabilityCaptureDelayNanoseconds: UInt64 = 180_000_000
-        static let menuStabilityRequiredStableSamples = 3
-        static let menuStabilityMaxPolls = 14
+        static let menuStabilityRequiredStableSamples = 4
+        static let menuStabilityMaxPolls = 18
     }
 
     enum ApplyStatus: Equatable {
@@ -711,10 +732,12 @@ final class MainPanelViewModel: ObservableObject {
         var previousSignature: MenuBarStabilitySignature?
         var stableSampleCount = 0
 
+        try? await Task.sleep(nanoseconds: Constants.menuStabilityInitialDelayNanoseconds)
+
         for _ in 0..<Constants.menuStabilityMaxPolls where !Task.isCancelled {
             do {
                 let cache = try await currentCache(allowVisibilityChanges: false)
-                let signature = MenuBarStabilitySignature(cache: cache)
+                let signature = MenuBarStabilitySignature(cache: cache, boundary: boundaryProvider())
                 if previousSignature == signature {
                     stableSampleCount += 1
                     if stableSampleCount >= Constants.menuStabilityRequiredStableSamples {
