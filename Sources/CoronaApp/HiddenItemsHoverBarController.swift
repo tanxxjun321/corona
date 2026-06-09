@@ -252,7 +252,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
                         && !MenuBarController.isLegacyAXGeneratedIdentifier($0)
                 }
             rows = makeRows(
-                uids: hiddenUIDs,
+                uids: Array(hiddenUIDs.reversed()),
                 itemByUID: itemByUID
             )
         } catch {

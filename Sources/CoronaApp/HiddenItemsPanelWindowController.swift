@@ -100,7 +100,7 @@ final class HiddenItemsPanelViewModel: ObservableObject {
                     .displayedHiddenUIDs(savedOrder: order, cache: cache)
                     .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
                 rows = makeRows(
-                    uids: hiddenUIDs,
+                    uids: Array(hiddenUIDs.reversed()),
                     section: .hidden,
                     itemByUID: itemByUID
                 )

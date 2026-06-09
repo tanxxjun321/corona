@@ -267,55 +267,15 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     var visibleRows: [Row] {
-        let visible = rows.filter { $0.physicalSection == .visible }
-        let physicalVisibleRank = Dictionary(uniqueKeysWithValues: physicalCache.visibleItems
-            .filter { !Self.isCoronaSelfItem($0) }
-            .sorted { lhs, rhs in
-                if abs(lhs.bounds.minX - rhs.bounds.minX) > 0.5 {
-                    return lhs.bounds.minX < rhs.bounds.minX
-                }
-                return lhs.windowID < rhs.windowID
-            }
-            .enumerated()
-            .map { index, item in
-                (item.tag.stableIdentifier, index)
-            })
-
-        return visible.sorted { lhs, rhs in
-            let lhsRank = physicalVisibleRank[lhs.uid] ?? Int.max
-            let rhsRank = physicalVisibleRank[rhs.uid] ?? Int.max
-            if lhsRank != rhsRank {
-                return lhsRank < rhsRank
-            }
-            return lhs.position < rhs.position
-        }
+        rows(in: .visible, orderedBy: draft.order.visible)
     }
 
     var hiddenRows: [Row] {
-        let savedHiddenUIDs = draft.order.hidden
-        let physicalHiddenUIDs = physicalCache.hiddenItems
-            .filter { !Self.isCoronaSelfItem($0) }
-            .map(\.tag.stableIdentifier)
-        let hiddenUIDs = orderedUnique(savedHiddenUIDs + physicalHiddenUIDs).reversed()
-        let hiddenUIDSet = Set(hiddenUIDs)
-        let rankByUID = Dictionary(uniqueKeysWithValues: hiddenUIDs.enumerated().map { index, uid in
-            (uid, index)
-        })
-
-        return rows
-            .filter { hiddenUIDSet.contains($0.uid) || $0.physicalSection == .hidden }
-            .sorted { lhs, rhs in
-                let lhsRank = rankByUID[lhs.uid] ?? Int.max
-                let rhsRank = rankByUID[rhs.uid] ?? Int.max
-                if lhsRank != rhsRank {
-                    return lhsRank < rhsRank
-                }
-                return lhs.position < rhs.position
-            }
+        rows(in: .hidden, orderedBy: Array(draft.order.hidden.reversed()))
     }
 
     var alwaysHiddenRows: [Row] {
-        rows.filter { $0.desiredSection == .alwaysHidden }
+        rows(in: .alwaysHidden, orderedBy: draft.order.alwaysHidden)
     }
 
     var hasRows: Bool {
@@ -749,14 +709,21 @@ final class MainPanelViewModel: ObservableObject {
             .compactMap(makeRow(from:))
     }
 
-    private func orderedUnique(_ uids: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for uid in uids where !seen.contains(uid) {
-            seen.insert(uid)
-            result.append(uid)
-        }
-        return result
+    private func rows(in section: MenuBarSection, orderedBy orderedUIDs: [String]) -> [Row] {
+        let rankByUID = Dictionary(uniqueKeysWithValues: orderedUIDs.enumerated().map { index, uid in
+            (uid, index)
+        })
+
+        return rows
+            .filter { $0.desiredSection == section }
+            .sorted { lhs, rhs in
+                let lhsRank = rankByUID[lhs.uid] ?? Int.max
+                let rhsRank = rankByUID[rhs.uid] ?? Int.max
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.position < rhs.position
+            }
     }
 
     private func makeRow(from item: MenuBarVisualItem) -> Row? {
