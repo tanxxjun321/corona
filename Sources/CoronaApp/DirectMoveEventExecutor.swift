@@ -30,12 +30,16 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         await Self.gate.acquire()
         await SnapshotPollingGate.shared.acquireSuspension()
         CoronaDebugLog.log("executor.itemEvent gate acquired uid=\(item.tag.stableIdentifier)")
+        let originalMouseLocation = currentMouseLocation()
         defer {
             Task {
                 await SnapshotPollingGate.shared.releaseSuspension()
                 await Self.gate.release()
                 CoronaDebugLog.log("executor.itemEvent gate released uid=\(item.tag.stableIdentifier)")
             }
+        }
+        defer {
+            restoreMouseLocation(originalMouseLocation)
         }
 
         let attempts = max(1, maxAttempts)
@@ -158,6 +162,22 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
 
     private func eventPID(for item: MenuBarItem) -> pid_t? {
         item.sourcePID ?? item.ownerPID
+    }
+
+    private func currentMouseLocation() -> CGPoint? {
+        CGEvent(source: nil)?.location
+    }
+
+    private func restoreMouseLocation(_ location: CGPoint?) {
+        guard let location else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(20)) {
+            let error = CGWarpMouseCursorPosition(location)
+            if error == .success {
+                CoronaDebugLog.verbose("executor.itemEvent restoredMouse location=\(location.debugDescription)")
+            } else {
+                CoronaDebugLog.log("executor.itemEvent restoreMouseFailed error=\(error.rawValue) location=\(location.debugDescription)")
+            }
+        }
     }
 
     private func permitLocalEvents(on source: CGEventSource) {
