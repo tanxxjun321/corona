@@ -32,6 +32,7 @@
 		1A1000000000000000000018 /* AXMenuBarSourcePIDResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */; };
 		1A1000000000000000000019 /* SkyLightWindowImageProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011C /* SkyLightWindowImageProvider.swift */; };
 		1A100000000000000000001A /* MenuBarAppearanceSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011D /* MenuBarAppearanceSampler.swift */; };
+		1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000011E /* BuiltInMenuBarDisplay.swift */; };
 		1A2000000000000000000001 /* DiagnosticLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000101 /* DiagnosticLogger.swift */; };
 		1A2000000000000000000002 /* DiscoveryCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000102 /* DiscoveryCapability.swift */; };
 		1A2000000000000000000003 /* ItemCacheBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000103 /* ItemCacheBuilder.swift */; };
@@ -58,6 +59,8 @@
 		1A2000000000000000000018 /* PendingRelocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000118 /* PendingRelocation.swift */; };
 		1A2000000000000000000019 /* UserDefaultsSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000119 /* UserDefaultsSettingsStore.swift */; };
 		1A200000000000000000001A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011A /* AppSettings.swift */; };
+		1A200000000000000000001B /* MenuBarHiddenPresentationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */; };
+		1A200000000000000000001C /* MenuBarItemCanonicalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -89,6 +92,7 @@
 		1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXMenuBarSourcePIDResolver.swift; sourceTree = "<group>"; };
 		1A100000000000000000011C /* SkyLightWindowImageProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLightWindowImageProvider.swift; sourceTree = "<group>"; };
 		1A100000000000000000011D /* MenuBarAppearanceSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAppearanceSampler.swift; sourceTree = "<group>"; };
+		1A100000000000000000011E /* BuiltInMenuBarDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuiltInMenuBarDisplay.swift; sourceTree = "<group>"; };
 		1A2000000000000000000101 /* DiagnosticLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogger.swift; sourceTree = "<group>"; };
 		1A2000000000000000000102 /* DiscoveryCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryCapability.swift; sourceTree = "<group>"; };
 		1A2000000000000000000103 /* ItemCacheBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemCacheBuilder.swift; sourceTree = "<group>"; };
@@ -115,6 +119,8 @@
 		1A2000000000000000000118 /* PendingRelocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRelocation.swift; sourceTree = "<group>"; };
 		1A2000000000000000000119 /* UserDefaultsSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsSettingsStore.swift; sourceTree = "<group>"; };
 		1A200000000000000000011A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarHiddenPresentationPolicy.swift; sourceTree = "<group>"; };
+		1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemCanonicalizer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,6 +157,7 @@
 			children = (
 				1A1000000000000000000101 /* AppDelegate.swift */,
 				1A100000000000000000011B /* AXMenuBarSourcePIDResolver.swift */,
+				1A100000000000000000011E /* BuiltInMenuBarDisplay.swift */,
 				1A1000000000000000000117 /* CoronaDebugLog.swift */,
 				1A1000000000000000000102 /* DirectMoveEventExecutor.swift */,
 				1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */,
@@ -210,6 +217,7 @@
 				1A2000000000000000000105 /* MenuBarDiscoveryProvider.swift */,
 				1A2000000000000000000106 /* MenuBarDisplayDuplicateFilter.swift */,
 				1A2000000000000000000107 /* MenuBarItemIdentityAssigner.swift */,
+				1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */,
 				1A2000000000000000000108 /* MenuBarTargetDisplayFilter.swift */,
 				1A2000000000000000000109 /* MenuBarWindowCandidateFilter.swift */,
 				1A200000000000000000010A /* SnapshotPollingGate.swift */,
@@ -231,6 +239,7 @@
 				1A200000000000000000010C /* LayoutApplicationPlanner.swift */,
 				1A200000000000000000010D /* LayoutDraft.swift */,
 				1A200000000000000000010E /* LayoutPlanner.swift */,
+				1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */,
 				1A200000000000000000010F /* SectionClassifier.swift */,
 				1A2000000000000000000110 /* SectionOrder.swift */,
 			);
@@ -394,6 +403,7 @@
 				1A2000000000000000000005 /* MenuBarDiscoveryProvider.swift in Sources */,
 				1A2000000000000000000006 /* MenuBarDisplayDuplicateFilter.swift in Sources */,
 				1A2000000000000000000007 /* MenuBarItemIdentityAssigner.swift in Sources */,
+				1A200000000000000000001C /* MenuBarItemCanonicalizer.swift in Sources */,
 				1A2000000000000000000008 /* MenuBarTargetDisplayFilter.swift in Sources */,
 				1A2000000000000000000009 /* MenuBarWindowCandidateFilter.swift in Sources */,
 				1A200000000000000000000A /* SnapshotPollingGate.swift in Sources */,
@@ -401,6 +411,7 @@
 				1A200000000000000000000C /* LayoutApplicationPlanner.swift in Sources */,
 				1A200000000000000000000D /* LayoutDraft.swift in Sources */,
 				1A200000000000000000000E /* LayoutPlanner.swift in Sources */,
+				1A200000000000000000001B /* MenuBarHiddenPresentationPolicy.swift in Sources */,
 				1A200000000000000000000F /* SectionClassifier.swift in Sources */,
 				1A2000000000000000000010 /* SectionOrder.swift in Sources */,
 				1A2000000000000000000011 /* ItemCache.swift in Sources */,
@@ -413,6 +424,7 @@
 				1A2000000000000000000018 /* PendingRelocation.swift in Sources */,
 				1A2000000000000000000019 /* UserDefaultsSettingsStore.swift in Sources */,
 				1A200000000000000000001A /* AppSettings.swift in Sources */,
+				1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

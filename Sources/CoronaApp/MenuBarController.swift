@@ -1,6 +1,19 @@
 import AppKit
 
+enum StatusItemDefaults {
+    static func ensurePreferredPosition(_ position: CGFloat, autosaveName: String) {
+        let key = "NSStatusItem Preferred Position \(autosaveName)"
+        guard UserDefaults.standard.object(forKey: key) == nil else { return }
+        UserDefaults.standard.set(position, forKey: key)
+    }
+}
+
 final class MenuBarController {
+    private enum E2ENotification {
+        static let collapseHiddenSections = Notification.Name("com.ltz.corona.e2e.collapseHiddenSections")
+        static let hiddenSectionsCollapsed = Notification.Name("com.ltz.corona.e2e.hiddenSectionsCollapsed")
+    }
+
     private let settingsStore: SettingsStore
     private let permissionChecker: SystemPermissionChecker
     private let statusItem: NSStatusItem
@@ -25,9 +38,11 @@ final class MenuBarController {
     ) {
         self.settingsStore = settingsStore
         self.permissionChecker = permissionChecker
+        StatusItemDefaults.ensurePreferredPosition(0, autosaveName: "CoronaStatusItem")
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        self.statusItem.autosaveName = "CoronaStatusItem"
         self.sectionController = StatusSectionController()
-        self.sectionController.ensureSpacerCoverage(displayWidth: NSScreen.main?.frame.width ?? 0)
+        self.sectionController.ensureSpacerCoverage(displayWidth: BuiltInMenuBarDisplay.target().frame.width)
         self.cacheController = MenuBarCacheController(provider: PublicMenuBarDiscoveryProvider())
         self.layoutStore = UserDefaultsLayoutPersistenceStore()
         self.thumbnailProvider = MenuBarThumbnailProvider(
@@ -40,6 +55,7 @@ final class MenuBarController {
     @MainActor
     func start() {
         configureStatusItem()
+        installE2EObserversIfNeeded()
         sectionController.setAlwaysHiddenSectionEnabled(settings.enableAlwaysHiddenSection)
         sanitizeSavedLayout()
         startHiddenItemsHoverBar()
@@ -48,9 +64,14 @@ final class MenuBarController {
         showMainPanelOnLaunchIfReady()
     }
 
+    deinit {
+        DistributedNotificationCenter.default().removeObserver(self)
+    }
+
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        button.image = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "Corona")
+        statusItem.length = NSStatusItem.squareLength
+        button.image = Self.statusImage(named: "menubar.rectangle", accessibilityDescription: "Corona")
         button.image?.isTemplate = true
         button.toolTip = "Corona"
         button.target = self
@@ -110,8 +131,42 @@ final class MenuBarController {
         case .hasAll:
             symbolName = "menubar.rectangle"
         }
-        statusItem.button?.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Corona")
+        statusItem.isVisible = true
+        statusItem.length = NSStatusItem.squareLength
+        statusItem.button?.image = Self.statusImage(named: symbolName, accessibilityDescription: "Corona")
         statusItem.button?.image?.isTemplate = true
+    }
+
+    private static func statusImage(named symbolName: String, accessibilityDescription: String) -> NSImage? {
+        NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityDescription)
+            ?? NSImage(systemSymbolName: "rectangle", accessibilityDescription: accessibilityDescription)
+            ?? NSImage(named: NSImage.applicationIconName)
+    }
+
+    private func installE2EObserversIfNeeded() {
+        guard ProcessInfo.processInfo.environment["CORONA_ENABLE_E2E_CONTROL"] == "1" else { return }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(collapseHiddenSectionsForE2E),
+            name: E2ENotification.collapseHiddenSections,
+            object: nil
+        )
+    }
+
+    @MainActor
+    @objc private func collapseHiddenSectionsForE2E() {
+        autoRehideTask?.cancel()
+        sectionController.setHiddenSectionVisible(false)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(false)
+        }
+        rebuildMenu()
+        DistributedNotificationCenter.default().postNotificationName(
+            E2ENotification.hiddenSectionsCollapsed,
+            object: Bundle.main.bundleIdentifier ?? "com.ltz.corona",
+            userInfo: nil,
+            deliverImmediately: true
+        )
     }
 
     @MainActor
@@ -407,12 +462,12 @@ final class MenuBarController {
 
         let sectionByWindowID = SectionClassifier().classify(items: snapshot.items, boundary: boundary)
         let cache = ItemCacheBuilder().build(snapshot: snapshot, sectionByWindowID: sectionByWindowID)
-        CoronaDebugLog.log("main.organizerCache expanded=\(shouldRestoreVisibility) visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count)")
+        CoronaDebugLog.verbose("main.organizerCache expanded=\(shouldRestoreVisibility) visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count)")
         return cache
     }
 
     private func physicallyVisibleCache(from snapshot: MenuBarSnapshot) -> ItemCache {
-        let displayFrame = snapshot.displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        let displayFrame = snapshot.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
         let visibleItems = snapshot.items.filter { item in
             item.isOnScreen && item.bounds.intersects(displayFrame)
         }
@@ -698,7 +753,7 @@ private extension Array where Element == MenuBarItem {
 
 private extension SectionBoundary {
     func isOnSameDisplay(as displayID: UInt32?) -> Bool {
-        let displayFrame = displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        let displayFrame = displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
         guard hiddenControlBounds.intersects(displayFrame) else { return false }
         if let alwaysHiddenControlBounds {
             return alwaysHiddenControlBounds.intersects(displayFrame)

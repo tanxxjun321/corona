@@ -45,11 +45,14 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
         let resolvedCandidates = uniqueCandidates.map { item in
             resolvedItem(item, sourcePID: sourcePIDByWindowID[item.windowID] ?? item.sourcePID)
         }
-        let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: resolvedCandidates)
+        let canonicalCandidates = MenuBarItemCanonicalizer()
+            .canonicalized(resolvedCandidates)
+            .map(Self.applyingMovementPolicy)
+        let assigned = MenuBarItemIdentityAssigner().assignInstanceIndexes(to: canonicalCandidates)
         let rejectedByNonTargetDisplay = menuBarCandidates.count - targetDisplayCandidates.count
         let rejectedAsDuplicate = targetDisplayCandidates.count - uniqueCandidates.count
-        CoronaDebugLog.log("discovery.snapshot targetDisplay=\(targetDisplay.id) targetFrame=\(targetDisplay.frame.debugDescription) rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) assigned=\(assigned.count) axSourcePID=\(Self.shouldResolveSourcePIDs)")
-        CoronaDebugLog.log("discovery.assigned uids=\(assigned.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
+        CoronaDebugLog.verbose("discovery.snapshot targetDisplay=\(targetDisplay.id) targetFrame=\(targetDisplay.frame.debugDescription) rawWindows=\(rawWindows.count) candidates=\(menuBarCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) assigned=\(assigned.count) axSourcePID=\(Self.shouldResolveSourcePIDs)")
+        CoronaDebugLog.verbose("discovery.assigned uids=\(assigned.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
         for item in assigned {
             CoronaDebugLog.verbose("discovery.item uid=\(item.tag.stableIdentifier) ownerPID=\(item.ownerPID) sourcePID=\(item.sourcePID.map(String.init) ?? "nil") bounds=\(item.bounds.debugDescription) title=\(item.title ?? "nil") onScreen=\(item.isOnScreen) canBeHidden=\(item.canBeHidden) movable=\(item.isMovable)")
         }
@@ -64,7 +67,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
     ) -> MenuBarSnapshot? {
         let axRecords = AXOrderedMenuBarScanner().records(on: targetDisplay.frame)
         guard !axRecords.isEmpty else {
-            CoronaDebugLog.log("discovery.ax fallback reason=emptyAXTree")
+            CoronaDebugLog.verbose("discovery.ax fallback reason=emptyAXTree")
             return nil
         }
 
@@ -91,7 +94,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
 
         let minimumUsefulMatchCount = min(uniqueCandidates.count, max(3, uniqueCandidates.count / 2))
         guard matchedPairs.count >= minimumUsefulMatchCount else {
-            CoronaDebugLog.log("discovery.ax fallback reason=lowMatchCount matched=\(matchedPairs.count) required=\(minimumUsefulMatchCount) cgCandidates=\(uniqueCandidates.count)")
+            CoronaDebugLog.verbose("discovery.ax fallback reason=lowMatchCount matched=\(matchedPairs.count) required=\(minimumUsefulMatchCount) cgCandidates=\(uniqueCandidates.count)")
             return nil
         }
 
@@ -100,9 +103,11 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             let match = pair.1
             let namespace = record.bundleIdentifier ?? match.tag.namespace
             let displayTitle = record.title ?? match.title ?? record.applicationName ?? "Status Item"
-            let sourceIsSystemItem = record.bundleIdentifier?.hasPrefix("com.apple.") == true
+            if abs(record.bounds.midX - match.bounds.midX) > 2 || abs(record.bounds.width - match.bounds.width) > 2 {
+                CoronaDebugLog.verbose("discovery.ax boundsOverride uid=\(namespace):item-\(orderedIndex) cg=\(match.bounds.debugDescription) ax=\(record.bounds.debugDescription)")
+            }
 
-            return MenuBarItem(
+            return Self.applyingMovementPolicy(MenuBarItem(
                 tag: MenuBarItemTag(
                     namespace: namespace,
                     title: "item-\(orderedIndex)",
@@ -111,18 +116,18 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
                 windowID: match.windowID,
                 ownerPID: match.ownerPID,
                 sourcePID: record.sourcePID,
-                bounds: match.bounds,
+                bounds: record.bounds,
                 title: displayTitle,
                 isOnScreen: match.isOnScreen,
-                isMovable: match.isMovable && !sourceIsSystemItem,
-                canBeHidden: match.canBeHidden && !sourceIsSystemItem
-            )
+                isMovable: match.isMovable,
+                canBeHidden: match.canBeHidden
+            ))
         }
 
         let rejectedByNonTargetDisplay = cgCandidates.count - targetDisplayCandidates.count
         let rejectedAsDuplicate = targetDisplayCandidates.count - uniqueCandidates.count
-        CoronaDebugLog.log("discovery.ax phase2 rawWindows=\(rawWindows.count) cgCandidates=\(cgCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) matched=\(items.count) unmatchedAX=\(axRecords.count - matchedPairs.count) unmatchedWindows=\(unmatchedWindows.count)")
-        CoronaDebugLog.log("discovery.ax phase3 assigned uids=\(items.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
+        CoronaDebugLog.verbose("discovery.ax phase2 rawWindows=\(rawWindows.count) cgCandidates=\(cgCandidates.count) rejectedNonTargetDisplay=\(rejectedByNonTargetDisplay) rejectedDuplicate=\(rejectedAsDuplicate) matched=\(items.count) unmatchedAX=\(axRecords.count - matchedPairs.count) unmatchedWindows=\(unmatchedWindows.count)")
+        CoronaDebugLog.verbose("discovery.ax phase3 assigned uids=\(items.map { "\($0.tag.stableIdentifier)@\($0.bounds.debugDescription)" })")
 
         return MenuBarSnapshot(displayID: targetDisplay.id, items: items)
     }
@@ -183,9 +188,7 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
         let displayTitle = title ?? ownerName ?? "Status Item"
         let isOnScreen = (info[kCGWindowIsOnscreen as String] as? Bool) ?? true
 
-        let isSystemItem = bundleIdentifier?.hasPrefix("com.apple.") == true
-
-        return MenuBarItem(
+        return Self.applyingMovementPolicy(MenuBarItem(
             tag: MenuBarItemTag(
                 namespace: namespace,
                 title: displayTitle,
@@ -197,18 +200,17 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             bounds: bounds,
             title: title,
             isOnScreen: isOnScreen,
-            isMovable: !isSystemItem,
-            canBeHidden: !isSystemItem
-        )
+            isMovable: true,
+            canBeHidden: true
+        ))
     }
 
     private func resolvedItem(_ item: MenuBarItem, sourcePID: Int32?) -> MenuBarItem {
         let sourceApplication = sourcePID.flatMap { NSRunningApplication(processIdentifier: $0) }
         let sourceBundleIdentifier = sourceApplication?.bundleIdentifier
         let namespace = sourceBundleIdentifier ?? item.tag.namespace
-        let isSystemItem = sourceBundleIdentifier?.hasPrefix("com.apple.") == true
 
-        return MenuBarItem(
+        return Self.applyingMovementPolicy(MenuBarItem(
             tag: MenuBarItemTag(
                 namespace: namespace,
                 title: item.tag.title,
@@ -220,44 +222,34 @@ struct DirectMenuBarDiscoveryProvider: MenuBarDiscoveryProvider {
             bounds: item.bounds,
             title: item.title,
             isOnScreen: item.isOnScreen,
-            isMovable: item.isMovable && !isSystemItem,
-            canBeHidden: !isSystemItem
-        )
+            isMovable: item.isMovable,
+            canBeHidden: item.canBeHidden
+        ))
+    }
+
+    private static func applyingMovementPolicy(_ item: MenuBarItem) -> MenuBarItem {
+        var copy = item
+        guard copy.tag.namespace.hasPrefix("com.apple.") else {
+            return copy
+        }
+
+        let titleCandidates = Set([copy.tag.title, copy.title].compactMap { $0 })
+        let isImmovableAppleMenuExtra =
+            copy.tag.namespace == "com.apple.controlcenter" &&
+            (!titleCandidates.isDisjoint(with: ["Clock", "BentoBox"]))
+
+        copy.isMovable = !isImmovableAppleMenuExtra
+        copy.canBeHidden = !isImmovableAppleMenuExtra
+        return copy
     }
 
     private static func displayFrames() -> [CGRect] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else {
-            return [CGDisplayBounds(CGMainDisplayID())]
-        }
-
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &displays, nil) == .success else {
-            return [CGDisplayBounds(CGMainDisplayID())]
-        }
-        return displays.map(CGDisplayBounds)
+        BuiltInMenuBarDisplay.activeDisplayFrames()
     }
 
     private static func targetMenuBarDisplay() -> TargetDisplay {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else {
-            let id = CGMainDisplayID()
-            return TargetDisplay(id: id, frame: CGDisplayBounds(id))
-        }
-
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &displays, nil) == .success else {
-            let id = CGMainDisplayID()
-            return TargetDisplay(id: id, frame: CGDisplayBounds(id))
-        }
-
-        let displayID: CGDirectDisplayID
-        if let builtInDisplayID = displays.first(where: { CGDisplayIsBuiltin($0) != 0 }) {
-            displayID = builtInDisplayID
-        } else {
-            displayID = CGMainDisplayID()
-        }
-        return TargetDisplay(id: displayID, frame: CGDisplayBounds(displayID))
+        let target = BuiltInMenuBarDisplay.target()
+        return TargetDisplay(id: target.id, frame: target.frame)
     }
 
     private static var shouldResolveSourcePIDs: Bool {

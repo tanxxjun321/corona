@@ -267,11 +267,51 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     var visibleRows: [Row] {
-        rows.filter { $0.desiredSection == .visible }
+        let visible = rows.filter { $0.physicalSection == .visible }
+        let physicalVisibleRank = Dictionary(uniqueKeysWithValues: physicalCache.visibleItems
+            .filter { !Self.isCoronaSelfItem($0) }
+            .sorted { lhs, rhs in
+                if abs(lhs.bounds.minX - rhs.bounds.minX) > 0.5 {
+                    return lhs.bounds.minX < rhs.bounds.minX
+                }
+                return lhs.windowID < rhs.windowID
+            }
+            .enumerated()
+            .map { index, item in
+                (item.tag.stableIdentifier, index)
+            })
+
+        return visible.sorted { lhs, rhs in
+            let lhsRank = physicalVisibleRank[lhs.uid] ?? Int.max
+            let rhsRank = physicalVisibleRank[rhs.uid] ?? Int.max
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return lhs.position < rhs.position
+        }
     }
 
     var hiddenRows: [Row] {
-        rows.filter { $0.desiredSection == .hidden }
+        let savedHiddenUIDs = draft.order.hidden
+        let physicalHiddenUIDs = physicalCache.hiddenItems
+            .filter { !Self.isCoronaSelfItem($0) }
+            .map(\.tag.stableIdentifier)
+        let hiddenUIDs = orderedUnique(savedHiddenUIDs + physicalHiddenUIDs).reversed()
+        let hiddenUIDSet = Set(hiddenUIDs)
+        let rankByUID = Dictionary(uniqueKeysWithValues: hiddenUIDs.enumerated().map { index, uid in
+            (uid, index)
+        })
+
+        return rows
+            .filter { hiddenUIDSet.contains($0.uid) || $0.physicalSection == .hidden }
+            .sorted { lhs, rhs in
+                let lhsRank = rankByUID[lhs.uid] ?? Int.max
+                let rhsRank = rankByUID[rhs.uid] ?? Int.max
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.position < rhs.position
+            }
     }
 
     var alwaysHiddenRows: [Row] {
@@ -311,7 +351,7 @@ final class MainPanelViewModel: ObservableObject {
         let snapshot = permissionChecker.snapshot()
         canRunCoreFeatures = snapshot.canRunCoreFeatures
         statusMessage = snapshot.canRunCoreFeatures ? nil : "Accessibility permission is required before Corona can scan or move menu bar items."
-        CoronaDebugLog.log("main.refresh permission canRun=\(snapshot.canRunCoreFeatures) status=\(snapshot.capabilityStatus)")
+        logRefresh("main.refresh permission canRun=\(snapshot.canRunCoreFeatures) status=\(snapshot.capabilityStatus)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
         guard snapshot.canRunCoreFeatures else {
             rows = []
             return
@@ -332,11 +372,11 @@ final class MainPanelViewModel: ObservableObject {
             do {
                 let scannedCache = try await currentCache(allowVisibilityChanges: allowVisibilityChanges)
                 let cache = allowVisibilityChanges ? scannedCache : mergedReadOnlyCache(scannedCache)
-                CoronaDebugLog.log("main.refresh cache mode=\(allowVisibilityChanges ? "full" : "readOnly") visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count) all=\(cache.allItems.count) scannedVisible=\(scannedCache.visibleItems.count) scannedHidden=\(scannedCache.hiddenItems.count) scannedAlwaysHidden=\(scannedCache.alwaysHiddenItems.count)")
+                logRefresh("main.refresh cache mode=\(allowVisibilityChanges ? "full" : "readOnly") visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count) all=\(cache.allItems.count) scannedVisible=\(scannedCache.visibleItems.count) scannedHidden=\(scannedCache.hiddenItems.count) scannedAlwaysHidden=\(scannedCache.alwaysHiddenItems.count)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
                 let manageableItems = cache.allItems.filter { item in
                     !Self.isCoronaSelfItem(item)
                 }
-                CoronaDebugLog.log("main.refresh manageable=\(manageableItems.count)")
+                logRefresh("main.refresh manageable=\(manageableItems.count)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
                 itemByUID = Dictionary(uniqueKeysWithValues: manageableItems.map { item in
                     (item.tag.stableIdentifier, item)
                 })
@@ -359,7 +399,7 @@ final class MainPanelViewModel: ObservableObject {
                 }
                 draft = LayoutDraft(order: sanitizedOrder)
                 rebuildRows()
-                CoronaDebugLog.log("main.refresh draft visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
+                logRefresh("main.refresh draft visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
                 if selectedUID == nil || rows.contains(where: { $0.uid == selectedUID }) == false {
                     selectedUID = rows.first?.uid
                 }
@@ -372,6 +412,10 @@ final class MainPanelViewModel: ObservableObject {
             }
             visualCacheCleanup()
         }
+    }
+
+    private func logRefresh(_ message: String, showLoading: Bool, allowVisibilityChanges: Bool) {
+        CoronaDebugLog.verbose(message)
     }
 
     func setHidden(_ hidden: Bool, uid: String) {
@@ -585,7 +629,7 @@ final class MainPanelViewModel: ObservableObject {
             hiddenItems: readOnlyCache.hiddenItems + retainedHiddenItems,
             alwaysHiddenItems: readOnlyCache.alwaysHiddenItems + retainedAlwaysHiddenItems
         )
-        CoronaDebugLog.log("main.refresh readOnlyMerged retainedHidden=\(retainedHiddenItems.count) retainedAlwaysHidden=\(retainedAlwaysHiddenItems.count)")
+        CoronaDebugLog.verbose("main.refresh readOnlyMerged retainedHidden=\(retainedHiddenItems.count) retainedAlwaysHidden=\(retainedAlwaysHiddenItems.count)")
         return merged
     }
 
@@ -703,6 +747,16 @@ final class MainPanelViewModel: ObservableObject {
         visualSnapshotProvider.snapshot(cache: physicalCache, desiredOrder: order)
             .items
             .compactMap(makeRow(from:))
+    }
+
+    private func orderedUnique(_ uids: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for uid in uids where !seen.contains(uid) {
+            seen.insert(uid)
+            result.append(uid)
+        }
+        return result
     }
 
     private func makeRow(from item: MenuBarVisualItem) -> Row? {
@@ -973,65 +1027,529 @@ private struct PreviewSection: View {
     var rows: [MainPanelViewModel.Row]
     @ObservedObject var model: MainPanelViewModel
 
-    private var railHeight: CGFloat {
-        max(rows.map(\.visualHeight).max() ?? 24, 24)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.title3)
                 .fontWeight(.regular)
 
-            GeometryReader { geometry in
-                let rowUIDs = rows.map(\.uid)
-                ZStack(alignment: .leading) {
-                    MenuBarRailBackground(color: model.menuBarBackgroundColor)
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 0) {
-                            InsertDropZone(
-                                section: section,
-                                targetIndex: 0,
-                                model: model
-                            )
-                            if model.newItemsMarkerIndex(in: section, rowUIDs: rowUIDs) == 0 {
-                                NewItemsMarkerView()
-                            }
-                            ForEach(Array(rows.enumerated()), id: \.element.uid) { index, row in
-                                HStack(spacing: 0) {
-                                    PreviewChip(
-                                        row: row,
-                                        isSelected: model.selectedUID == row.uid,
-                                        model: model
-                                    )
-                                    InsertDropZone(
-                                        section: section,
-                                        targetIndex: index + 1,
-                                        model: model
-                                    )
-                                    if model.newItemsMarkerIndex(in: section, rowUIDs: rowUIDs) == index + 1 {
-                                        NewItemsMarkerView()
-                                    }
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .frame(minWidth: geometry.size.width, alignment: .leading)
-                    }
-                    .scrollIndicators(.visible)
-                }
-                .onDrop(
-                    of: [UTType.plainText],
-                    delegate: MenuBarItemDropDelegate(
-                        section: section,
-                        targetIndex: rows.count,
-                        model: model
-                    )
+            ZStack(alignment: .leading) {
+                MenuBarRailBackground(color: model.menuBarBackgroundColor)
+                LayoutRail(
+                    section: section,
+                    rows: rows,
+                    selectedUID: model.selectedUID,
+                    markerIndex: model.newItemsMarkerIndex(in: section, rowUIDs: rows.map(\.uid)),
+                    model: model
                 )
             }
-            .frame(height: railHeight)
+            .frame(height: 50)
         }
     }
+}
+
+private struct LayoutRail: NSViewRepresentable {
+    var section: MenuBarSection
+    var rows: [MainPanelViewModel.Row]
+    var selectedUID: String?
+    var markerIndex: Int?
+    var model: MainPanelViewModel
+
+    func makeNSView(context: Context) -> LayoutRailScrollView {
+        LayoutRailScrollView(model: model, section: section)
+    }
+
+    func updateNSView(_ nsView: LayoutRailScrollView, context: Context) {
+        nsView.model = model
+        nsView.section = section
+        nsView.setItems(LayoutRailItem.items(rows: rows, markerIndex: markerIndex), selectedUID: selectedUID)
+    }
+}
+
+private enum LayoutRailItem: Equatable {
+    case row(MainPanelViewModel.Row)
+    case newItemsMarker
+
+    static func items(rows: [MainPanelViewModel.Row], markerIndex: Int?) -> [LayoutRailItem] {
+        var items: [LayoutRailItem] = []
+        let clampedMarkerIndex = markerIndex.map { min(max($0, 0), rows.count) }
+        for index in 0...rows.count {
+            if clampedMarkerIndex == index {
+                items.append(.newItemsMarker)
+            }
+            if rows.indices.contains(index) {
+                items.append(.row(rows[index]))
+            }
+        }
+        return items
+    }
+
+    var id: String {
+        switch self {
+        case .row(let row):
+            return "row:\(row.uid)"
+        case .newItemsMarker:
+            return "marker:new-items"
+        }
+    }
+
+    var isDraggable: Bool {
+        switch self {
+        case .row(let row):
+            return row.isMovable
+        case .newItemsMarker:
+            return true
+        }
+    }
+}
+
+private final class LayoutRailScrollView: NSScrollView {
+    private let paddingView: LayoutRailPaddingView
+
+    weak var model: MainPanelViewModel? {
+        get { paddingView.model }
+        set { paddingView.model = newValue }
+    }
+
+    var section: MenuBarSection {
+        get { paddingView.section }
+        set { paddingView.section = newValue }
+    }
+
+    init(model: MainPanelViewModel, section: MenuBarSection) {
+        paddingView = LayoutRailPaddingView(model: model, section: section)
+        super.init(frame: .zero)
+        hasHorizontalScroller = true
+        horizontalScroller = LayoutRailScroller()
+        autohidesScrollers = true
+        verticalScrollElasticity = .none
+        horizontalScrollElasticity = .none
+        drawsBackground = false
+        documentView = paddingView
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            paddingView.heightAnchor.constraint(equalTo: contentView.heightAnchor),
+            paddingView.widthAnchor.constraint(greaterThanOrEqualTo: contentView.widthAnchor),
+            paddingView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setItems(_ items: [LayoutRailItem], selectedUID: String?) {
+        paddingView.setItems(items, selectedUID: selectedUID)
+    }
+}
+
+private final class LayoutRailScroller: NSScroller {
+    override static var isCompatibleWithOverlayScrollers: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        controlSize = .mini
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+private final class LayoutRailPaddingView: NSView {
+    private let container: LayoutRailContainer
+
+    weak var model: MainPanelViewModel? {
+        get { container.model }
+        set { container.model = newValue }
+    }
+
+    var section: MenuBarSection {
+        get { container.section }
+        set { container.section = newValue }
+    }
+
+    init(model: MainPanelViewModel, section: MenuBarSection) {
+        container = LayoutRailContainer(model: model, section: section)
+        super.init(frame: .zero)
+        addSubview(container)
+        translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            container.centerYAnchor.constraint(equalTo: centerYAnchor),
+            trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: 7.5),
+            leadingAnchor.constraint(lessThanOrEqualTo: container.leadingAnchor, constant: -7.5),
+        ])
+        registerForDraggedTypes([.layoutRailItem])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setItems(_ items: [LayoutRailItem], selectedUID: String?) {
+        container.setItems(items, selectedUID: selectedUID)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        container.updateForDrag(sender, phase: .entered)
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        guard let sender else { return }
+        _ = container.updateForDrag(sender, phase: .exited)
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        container.updateForDrag(sender, phase: .updated)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        _ = container.updateForDrag(sender, phase: .ended)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer {
+            DispatchQueue.main.async {
+                self.container.canSetItems = true
+            }
+        }
+        guard let source = sender.draggingSource as? LayoutRailItemView,
+              let index = container.arrangedViews.firstIndex(of: source) else {
+            return false
+        }
+        let targetIndex = container.rowInsertionIndex(beforeArrangedIndex: index, excluding: source)
+        Task { @MainActor [weak model, section] in
+            switch source.item {
+            case .row(let row):
+                model?.move(uid: row.uid, to: section, at: targetIndex)
+            case .newItemsMarker:
+                model?.moveNewItemsMarker(to: section, at: targetIndex)
+            }
+        }
+        return true
+    }
+}
+
+private final class LayoutRailContainer: NSView {
+    enum DraggingPhase {
+        case entered, exited, updated, ended
+    }
+
+    private lazy var widthConstraint: NSLayoutConstraint = {
+        let constraint = widthAnchor.constraint(equalToConstant: 0)
+        constraint.isActive = true
+        return constraint
+    }()
+
+    private lazy var heightConstraint: NSLayoutConstraint = {
+        let constraint = heightAnchor.constraint(equalToConstant: 0)
+        constraint.isActive = true
+        return constraint
+    }()
+
+    weak var model: MainPanelViewModel?
+    var section: MenuBarSection
+    var shouldAnimateNextLayoutPass = true
+    var canSetItems = true
+    private let spacing: CGFloat = 0
+
+    var arrangedViews = [LayoutRailItemView]() {
+        didSet {
+            layoutArrangedViews(oldViews: oldValue)
+        }
+    }
+
+    init(model: MainPanelViewModel, section: MenuBarSection) {
+        self.model = model
+        self.section = section
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        unregisterDraggedTypes()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setItems(_ items: [LayoutRailItem], selectedUID: String?) {
+        guard canSetItems else { return }
+        var newViews: [LayoutRailItemView] = []
+        for item in items {
+            if let existing = arrangedViews.first(where: { $0.item.id == item.id }) {
+                existing.item = item
+                existing.selectedUID = selectedUID
+                newViews.append(existing)
+            } else {
+                newViews.append(LayoutRailItemView(item: item, selectedUID: selectedUID, model: model))
+            }
+        }
+        arrangedViews = newViews
+    }
+
+    func rowInsertionIndex(beforeArrangedIndex index: Int, excluding source: LayoutRailItemView) -> Int {
+        arrangedViews[..<index].filter { view in
+            view !== source && view.isRow
+        }.count
+    }
+
+    @discardableResult
+    func updateForDrag(_ draggingInfo: NSDraggingInfo, phase: DraggingPhase) -> NSDragOperation {
+        guard let sourceView = draggingInfo.draggingSource as? LayoutRailItemView else {
+            return []
+        }
+        switch phase {
+        case .entered:
+            if !arrangedViews.contains(sourceView) {
+                shouldAnimateNextLayoutPass = false
+            }
+            return updateForDrag(draggingInfo, phase: .updated)
+        case .exited:
+            if let sourceIndex = arrangedViews.firstIndex(of: sourceView) {
+                shouldAnimateNextLayoutPass = false
+                arrangedViews.remove(at: sourceIndex)
+            }
+            return .move
+        case .updated:
+            if sourceView.oldContainerInfo == nil,
+               let sourceIndex = arrangedViews.firstIndex(of: sourceView) {
+                sourceView.oldContainerInfo = (self, sourceIndex)
+            }
+            guard !arrangedViews.filter(\.isEnabledForDrop).isEmpty else {
+                arrangedViews.insert(sourceView, at: 0)
+                return .move
+            }
+            let location = convert(draggingInfo.draggingLocation, from: nil)
+            guard let destinationView = arrangedView(nearestTo: location.x),
+                  destinationView !== sourceView,
+                  destinationView.isEnabledForDrop,
+                  destinationView.layer?.animationKeys() == nil,
+                  let destinationIndex = arrangedViews.firstIndex(of: destinationView) else {
+                return .move
+            }
+            let midX = destinationView.frame.midX
+            let offset = destinationView.frame.width / 2
+            if !((midX - offset)...(midX + offset)).contains(location.x),
+               sourceView.oldContainerInfo?.container === self {
+                return .move
+            }
+            if let sourceIndex = arrangedViews.firstIndex(of: sourceView) {
+                var targetIndex = destinationIndex
+                if destinationIndex > sourceIndex {
+                    targetIndex += 1
+                }
+                arrangedViews.move(fromOffsets: [sourceIndex], toOffset: targetIndex)
+            } else {
+                arrangedViews.insert(sourceView, at: destinationIndex)
+            }
+            return .move
+        case .ended:
+            return .move
+        }
+    }
+
+    private func arrangedView(nearestTo xPosition: CGFloat) -> LayoutRailItemView? {
+        arrangedViews.min { lhs, rhs in
+            abs(lhs.frame.midX - xPosition) < abs(rhs.frame.midX - xPosition)
+        }
+    }
+
+    private func layoutArrangedViews(oldViews: [LayoutRailItemView]? = nil) {
+        defer {
+            shouldAnimateNextLayoutPass = true
+        }
+        let oldViews = oldViews ?? arrangedViews
+        for view in oldViews where !arrangedViews.contains(view) {
+            view.removeFromSuperview()
+            view.hasContainer = false
+        }
+
+        var previous: NSView?
+        let maxHeight = arrangedViews.map(\.bounds.height).max() ?? 0
+        for var view in arrangedViews {
+            if subviews.contains(view) {
+                if shouldAnimateNextLayoutPass {
+                    view = view.animator()
+                }
+            } else {
+                addSubview(view)
+                view.hasContainer = true
+            }
+            view.setFrameOrigin(CGPoint(
+                x: previous.map { $0.frame.maxX + spacing } ?? 0,
+                y: (maxHeight / 2) - view.bounds.midY
+            ))
+            previous = view
+        }
+
+        widthConstraint.constant = previous?.frame.maxX ?? 0
+        heightConstraint.constant = maxHeight
+    }
+}
+
+private final class LayoutRailItemView: NSView, NSDraggingSource {
+    var item: LayoutRailItem {
+        didSet {
+            configureForCurrentItem()
+        }
+    }
+    var selectedUID: String? {
+        didSet {
+            needsDisplay = true
+        }
+    }
+    weak var model: MainPanelViewModel?
+    var oldContainerInfo: (container: LayoutRailContainer, index: Int)?
+    var hasContainer = false
+    var isDraggingPlaceholder = false {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    var isRow: Bool {
+        if case .row = item { return true }
+        return false
+    }
+
+    var isEnabledForDrop: Bool {
+        true
+    }
+
+    init(item: LayoutRailItem, selectedUID: String?, model: MainPanelViewModel?) {
+        self.item = item
+        self.selectedUID = selectedUID
+        self.model = model
+        super.init(frame: .zero)
+        unregisterDraggedTypes()
+        wantsLayer = true
+        configureForCurrentItem()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func configureForCurrentItem() {
+        toolTip = tooltip
+        setFrameSize(sizeForCurrentItem)
+        needsDisplay = true
+    }
+
+    private var sizeForCurrentItem: CGSize {
+        switch item {
+        case .row(let row):
+            return CGSize(width: row.visualWidth, height: row.visualHeight)
+        case .newItemsMarker:
+            return CGSize(width: Self.markerTextWidth + 20, height: 26)
+        }
+    }
+
+    private static var markerTextWidth: CGFloat {
+        "New menu bar items appear here".size(withAttributes: markerTextAttributes).width
+    }
+
+    private var tooltip: String? {
+        switch item {
+        case .row(let row):
+            return "\(row.title) - \(row.owner)"
+        case .newItemsMarker:
+            return "Drag to choose where newly detected menu bar items should appear"
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard !isDraggingPlaceholder else { return }
+        switch item {
+        case .row(let row):
+            if selectedUID == row.uid {
+                NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+            }
+            row.thumbnail.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: row.isMovable ? 1 : 0.58)
+        case .newItemsMarker:
+            drawMarker()
+        }
+    }
+
+    private func drawMarker() {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 1), xRadius: 6, yRadius: 6)
+        NSColor.systemPurple.withAlphaComponent(0.86).setFill()
+        path.fill()
+        let text = "New menu bar items appear here"
+        let size = text.size(withAttributes: Self.markerTextAttributes)
+        text.draw(
+            at: CGPoint(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2),
+            withAttributes: Self.markerTextAttributes
+        )
+    }
+
+    private static var markerTextAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ]
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if case .row(let row) = item {
+            Task { @MainActor [weak model] in
+                model?.select(uid: row.uid)
+            }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard item.isDraggable else { return }
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(item.id, forType: .layoutRailItem)
+        let draggingItem = NSDraggingItem(pasteboardWriter: pasteboardItem)
+        draggingItem.setDraggingFrame(bounds, contents: draggingImage)
+        beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+
+    private var draggingImage: NSImage? {
+        let image = NSImage(size: bounds.size)
+        image.lockFocus()
+        draw(bounds)
+        image.unlockFocus()
+        return image
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .move
+    }
+
+    func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        if let container = superview as? LayoutRailContainer {
+            container.canSetItems = false
+        }
+        session.animatesToStartingPositionsOnCancelOrFail = false
+        DispatchQueue.main.async {
+            self.isDraggingPlaceholder = true
+        }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        defer {
+            oldContainerInfo = nil
+        }
+        isDraggingPlaceholder = false
+        if !hasContainer,
+           let (container, index) = oldContainerInfo {
+            container.shouldAnimateNextLayoutPass = false
+            container.arrangedViews.insert(self, at: index)
+        }
+    }
+}
+
+private extension NSPasteboard.PasteboardType {
+    static let layoutRailItem = Self("com.ltz.corona.layout-rail-item")
 }
 
 private struct MenuBarItemDropDelegate: DropDelegate {

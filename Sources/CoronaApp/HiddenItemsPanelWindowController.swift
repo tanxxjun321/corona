@@ -96,11 +96,11 @@ final class HiddenItemsPanelViewModel: ObservableObject {
                     (item.tag.stableIdentifier, item)
                 })
                 let order = layoutStore.loadSavedSectionOrder()
-                let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
-                    .map(\.tag.stableIdentifier)
+                let hiddenUIDs = MenuBarHiddenPresentationPolicy()
+                    .displayedHiddenUIDs(savedOrder: order, cache: cache)
                     .filter { !MenuBarController.isCoronaSelfIdentifier($0) }
                 rows = makeRows(
-                    uids: mergedHiddenUIDs(saved: order.hidden, physical: physicalHiddenUIDs),
+                    uids: hiddenUIDs,
                     section: .hidden,
                     itemByUID: itemByUID
                 )
@@ -150,15 +150,6 @@ final class HiddenItemsPanelViewModel: ObservableObject {
         }
     }
 
-    private func mergedHiddenUIDs(saved: [String], physical: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for uid in saved + physical where !seen.contains(uid) {
-            seen.insert(uid)
-            result.append(uid)
-        }
-        return result
-    }
 }
 
 struct HiddenItemsPanelView: View {

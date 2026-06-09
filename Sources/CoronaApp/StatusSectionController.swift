@@ -19,8 +19,12 @@ final class StatusSectionController {
     private(set) var alwaysHiddenVisibility: StatusSectionVisibility = .hidden
 
     init() {
+        StatusItemDefaults.ensurePreferredPosition(1, autosaveName: "CoronaHiddenControl")
+        StatusItemDefaults.ensurePreferredPosition(2, autosaveName: "CoronaAlwaysHiddenControl")
         hiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.compactLength)
+        hiddenControlItem.autosaveName = "CoronaHiddenControl"
         alwaysHiddenControlItem = NSStatusBar.system.statusItem(withLength: Constants.compactLength)
+        alwaysHiddenControlItem.autosaveName = "CoronaAlwaysHiddenControl"
         configureControlItem(hiddenControlItem)
         configureControlItem(alwaysHiddenControlItem)
         apply(visibility: hiddenVisibility, to: hiddenControlItem)
@@ -45,7 +49,8 @@ final class StatusSectionController {
     }
 
     func ensureSpacerCoverage(displayWidth: CGFloat) {
-        let requiredCount = max(0, Int(ceil(displayWidth / Constants.hiddenLength)) - 1)
+        let targetWidth = BuiltInMenuBarDisplay.target().frame.width
+        let requiredCount = max(0, Int(ceil(max(displayWidth, targetWidth) / Constants.hiddenLength)) - 1)
         while spacerItems.count < requiredCount {
             let item = NSStatusBar.system.statusItem(withLength: Constants.hiddenLength)
             configureControlItem(item)
@@ -120,7 +125,30 @@ final class StatusSectionController {
     }
 
     private func statusItemBounds(_ item: NSStatusItem) -> CGRect? {
-        item.button?.window?.frame
+        guard let window = item.button?.window else { return nil }
+        return cgWindowCoordinateFrame(for: window)
+    }
+
+    private func cgWindowCoordinateFrame(for window: NSWindow) -> CGRect? {
+        let appKitFrame = window.frame
+        guard let screen = window.screen,
+              let screenDisplayID = BuiltInMenuBarDisplay.displayID(for: screen) else {
+            CoronaDebugLog.log("status.boundary missingScreen window=\(window.windowNumber) frame=\(appKitFrame.debugDescription)")
+            return nil
+        }
+        let target = BuiltInMenuBarDisplay.target()
+        guard screenDisplayID == target.id else {
+            CoronaDebugLog.log("status.boundary nonBuiltInDisplay window=\(window.windowNumber) screenDisplayID=\(screenDisplayID) builtInDisplayID=\(target.id) frame=\(appKitFrame.debugDescription)")
+            return nil
+        }
+
+        let screenFrame = screen.frame
+        return CGRect(
+            x: target.frame.minX + (appKitFrame.minX - screenFrame.minX),
+            y: target.frame.minY + (screenFrame.maxY - appKitFrame.maxY),
+            width: appKitFrame.width,
+            height: appKitFrame.height
+        )
     }
 
     private func isUsableBoundaryBounds(_ bounds: CGRect) -> Bool {
@@ -133,6 +161,7 @@ final class StatusSectionController {
 
     private func controlItem(_ item: NSStatusItem, title: String) -> MenuBarItem? {
         guard let window = item.button?.window else { return nil }
+        guard let bounds = cgWindowCoordinateFrame(for: window) else { return nil }
         return MenuBarItem(
             tag: MenuBarItemTag(
                 namespace: "com.ltz.corona.control",
@@ -142,7 +171,7 @@ final class StatusSectionController {
             windowID: UInt32(window.windowNumber),
             ownerPID: Int32(ProcessInfo.processInfo.processIdentifier),
             sourcePID: Int32(ProcessInfo.processInfo.processIdentifier),
-            bounds: window.frame,
+            bounds: bounds,
             title: title,
             isOnScreen: true,
             isMovable: false,

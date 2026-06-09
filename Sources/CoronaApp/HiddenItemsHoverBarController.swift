@@ -245,15 +245,14 @@ final class HiddenItemsHoverBarModel: ObservableObject {
             let order = layoutStore.loadSavedSectionOrder()
                 .removingCoronaSelfItems()
                 .removingLegacyAXGeneratedItems()
-            let physicalHiddenUIDs = (cache.hiddenItems + cache.alwaysHiddenItems)
-                .map(\.tag.stableIdentifier)
+            let hiddenUIDs = MenuBarHiddenPresentationPolicy()
+                .displayedHiddenUIDs(savedOrder: order, cache: cache)
                 .filter {
                     !MenuBarController.isCoronaSelfIdentifier($0)
                         && !MenuBarController.isLegacyAXGeneratedIdentifier($0)
                 }
-            let savedHiddenUIDs = (order.hidden + order.alwaysHidden).filter { itemByUID[$0] != nil }
             rows = makeRows(
-                uids: mergedHiddenUIDs(saved: savedHiddenUIDs, physical: physicalHiddenUIDs),
+                uids: hiddenUIDs,
                 itemByUID: itemByUID
             )
         } catch {
@@ -321,16 +320,6 @@ final class HiddenItemsHoverBarModel: ObservableObject {
             .removingCoronaSelfItems()
             .removingLegacyAXGeneratedItems()
         return !order.hidden.isEmpty || !rows.isEmpty
-    }
-
-    private func mergedHiddenUIDs(saved: [String], physical: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for uid in saved + physical where !seen.contains(uid) {
-            seen.insert(uid)
-            result.append(uid)
-        }
-        return result
     }
 
     func reveal(uid: String) {

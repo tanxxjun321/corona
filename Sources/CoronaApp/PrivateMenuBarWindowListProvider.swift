@@ -63,7 +63,7 @@ struct PrivateMenuBarWindowListProvider {
         }
 
         let result = Array(list.prefix(Int(count)))
-        CoronaDebugLog.log("privateMenuBarWindows.ids count=\(result.count)")
+        CoronaDebugLog.verbose("privateMenuBarWindows.ids count=\(result.count)")
         return result
     }
 }

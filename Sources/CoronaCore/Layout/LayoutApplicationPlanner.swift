@@ -34,7 +34,8 @@ public struct LayoutApplicationPlanner {
     public func nextStep(
         cache: ItemCache,
         preference: LayoutPreference,
-        sectionBoundaries: [MenuBarSection: MenuBarItem]
+        sectionBoundaries: [MenuBarSection: MenuBarItem],
+        preferredItemUID: String? = nil
     ) -> LayoutApplicationStep {
         let currentOrder = SectionOrder(cache: cache)
         guard !preference.savedOrder.isEmpty else {
@@ -42,7 +43,11 @@ public struct LayoutApplicationPlanner {
         }
 
         let desiredOrder = layoutPlanner.mergedOrder(cache: cache, preference: preference)
-        guard let plannedMove = layoutPlanner.nextMove(currentOrder: currentOrder, desiredOrder: desiredOrder) else {
+        guard let plannedMove = layoutPlanner.nextMove(
+            currentOrder: currentOrder,
+            desiredOrder: desiredOrder,
+            preferredItemUID: preferredItemUID
+        ) else {
             return .satisfied(desiredOrder)
         }
 

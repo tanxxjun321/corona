@@ -52,6 +52,19 @@ public struct LayoutPlanner {
         currentOrder: SectionOrder,
         desiredOrder: SectionOrder
     ) -> LayoutMove? {
+        nextMove(currentOrder: currentOrder, desiredOrder: desiredOrder, preferredItemUID: nil)
+    }
+
+    public func nextMove(
+        currentOrder: SectionOrder,
+        desiredOrder: SectionOrder,
+        preferredItemUID: String?
+    ) -> LayoutMove? {
+        if let preferredItemUID,
+           let move = preferredMove(for: preferredItemUID, currentOrder: currentOrder, desiredOrder: desiredOrder) {
+            return move
+        }
+
         if let move = nextVisibleRestorationMove(currentOrder: currentOrder, desiredOrder: desiredOrder) {
             return move
         }
@@ -66,6 +79,40 @@ public struct LayoutPlanner {
         }
 
         return nextCrossSectionMove(currentOrder: currentOrder, desiredOrder: desiredOrder)
+    }
+
+    private func preferredMove(
+        for uid: String,
+        currentOrder: SectionOrder,
+        desiredOrder: SectionOrder
+    ) -> LayoutMove? {
+        guard let currentSection = currentOrder.section(containing: uid),
+              let desiredSection = desiredOrder.section(containing: uid) else {
+            return nil
+        }
+
+        if currentSection != desiredSection {
+            return LayoutMove(itemUID: uid, target: target(for: uid, in: desiredSection, desiredOrder: desiredOrder))
+        }
+
+        let currentInSection = currentOrder[currentSection].filter { desiredOrder[currentSection].contains($0) }
+        guard currentInSection != desiredOrder[desiredSection] else {
+            return nil
+        }
+        return LayoutMove(itemUID: uid, target: target(for: uid, in: desiredSection, desiredOrder: desiredOrder))
+    }
+
+    private func target(for uid: String, in section: MenuBarSection, desiredOrder: SectionOrder) -> LayoutTarget {
+        if section == .visible {
+            guard let previous = previousUID(before: uid, in: desiredOrder[section]) else {
+                return .sectionBoundary(section)
+            }
+            return .rightOfUID(previous)
+        }
+        guard let previous = previousUID(before: uid, in: desiredOrder[section]) else {
+            return .sectionBoundary(section)
+        }
+        return .rightOfUID(previous)
     }
 
     private func nextVisibleRestorationMove(currentOrder: SectionOrder, desiredOrder: SectionOrder) -> LayoutMove? {

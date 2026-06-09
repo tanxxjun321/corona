@@ -46,10 +46,13 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         guard candidate.ownerName != "Window Server", candidate.title != "Menubar" else { return false }
         guard bundleIdentifierForPID(candidate.ownerPID) != mainBundleIdentifier else { return false }
         guard !isGenericControlCenterContainer(candidate) else { return false }
+        guard !isControlCenterSubviewArtifact(candidate) else { return false }
+        guard !isTextInputSubviewArtifact(candidate) else { return false }
         guard !isLeftEdgeControlCenterArtifact(candidate, displayFrames: displayFrames) else { return false }
         guard isStatusItemLayer(candidate.layer) else { return false }
         guard isStatusItemSized(candidate.bounds, displayFrames: displayFrames) else { return false }
         return isInMenuBarVerticalBand(candidate.bounds, displayFrames: displayFrames)
+            && isInStatusItemHorizontalRegion(candidate.bounds, displayFrames: displayFrames)
     }
 
     private func isGenericControlCenterContainer(_ candidate: MenuBarWindowCandidate) -> Bool {
@@ -75,6 +78,27 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         }
     }
 
+    private func isControlCenterSubviewArtifact(_ candidate: MenuBarWindowCandidate) -> Bool {
+        let ownerName = candidate.ownerName ?? ""
+        let bundleIdentifier = bundleIdentifierForPID(candidate.ownerPID)
+        let isControlCenter = ownerName == "Control Center" ||
+            ownerName == "控制中心" ||
+            bundleIdentifier == "com.apple.controlcenter"
+        guard isControlCenter else { return false }
+
+        return candidate.bounds.height < 30
+    }
+
+    private func isTextInputSubviewArtifact(_ candidate: MenuBarWindowCandidate) -> Bool {
+        let ownerName = candidate.ownerName ?? ""
+        let bundleIdentifier = bundleIdentifierForPID(candidate.ownerPID)
+        let isTextInputAgent = ownerName == "TextInputMenuAgent" ||
+            bundleIdentifier == "com.apple.TextInputMenuAgent"
+        guard isTextInputAgent else { return false }
+
+        return candidate.bounds.height < 30
+    }
+
     private func isStatusItemLayer(_ layer: Int) -> Bool {
         layer >= 20 && layer <= 30
     }
@@ -92,6 +116,19 @@ public struct MenuBarWindowCandidateFilter: Sendable {
         displayFrames.contains { frame in
             let verticalTolerance: CGFloat = 8
             return abs(bounds.minY - frame.minY) <= verticalTolerance
+        }
+    }
+
+    private func isInStatusItemHorizontalRegion(_ bounds: CGRect, displayFrames: [CGRect]) -> Bool {
+        displayFrames.contains { frame in
+            guard abs(bounds.minY - frame.minY) <= 8 else { return false }
+
+            if !bounds.intersects(frame) {
+                return true
+            }
+
+            let minimumStatusItemX = frame.minX + frame.width * 0.25
+            return bounds.maxX >= minimumStatusItemX
         }
     }
 }

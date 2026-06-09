@@ -95,11 +95,24 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
             ownerPID: 42,
             ownerName: "控制中心",
             title: "WiFi",
-            bounds: CGRect(x: 1296, y: 0, width: 38, height: 24),
+            bounds: CGRect(x: 1296, y: 0, width: 38, height: 37),
             layer: 25
         )
 
         XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsControlCenterSubviewArtifact() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "控制中心",
+            title: "Sound",
+            bounds: CGRect(x: 966, y: -6, width: 38, height: 24),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
     }
 
     func testRejectsLeftEdgeControlCenterArtifact() {
@@ -109,6 +122,32 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
             ownerName: "控制中心",
             title: "控制中心",
             bounds: CGRect(x: 0, y: 0, width: 38, height: 37),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsLeftApplicationMenuRegionItem() {
+        let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "TextInputMenuAgent",
+            title: "TextInputMenuAgent",
+            bounds: CGRect(x: 0, y: 0, width: 44, height: 37),
+            layer: 25
+        )
+
+        XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsTextInputSubviewArtifact() {
+        let filter = makeFilter(bundleIdentifier: "com.apple.TextInputMenuAgent")
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "TextInputMenuAgent",
+            title: "Item-0",
+            bounds: CGRect(x: 829, y: 1, width: 44, height: 24),
             layer: 25
         )
 
@@ -167,12 +206,12 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
         XCTAssertFalse(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1728, height: 1117)]))
     }
 
-    private func makeFilter() -> MenuBarWindowCandidateFilter {
+    private func makeFilter(bundleIdentifier: String = "com.example.other") -> MenuBarWindowCandidateFilter {
         MenuBarWindowCandidateFilter(
             currentProcessID: 1,
             mainBundleIdentifier: "com.example.corona",
             bundleIdentifierForPID: { pid in
-                pid == 1 ? "com.example.corona" : "com.example.other"
+                pid == 1 ? "com.example.corona" : bundleIdentifier
             }
         )
     }

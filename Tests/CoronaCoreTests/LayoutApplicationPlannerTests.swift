@@ -141,4 +141,44 @@ final class LayoutApplicationPlannerTests: XCTestCase {
             )
         )
     }
+
+    func testPreferredItemMoveRunsBeforeOtherPendingVisibleRestorations() {
+        let neat = makeItem(windowID: 1, namespace: "app", title: "Neat", sourcePID: 10)
+        let memory = makeItem(windowID: 2, namespace: "app", title: "Memory", sourcePID: 10)
+        let cpu = makeItem(windowID: 3, namespace: "app", title: "CPU", sourcePID: 10)
+        let network = makeItem(windowID: 4, namespace: "app", title: "Network", sourcePID: 10)
+        let visibleBoundary = makeItem(windowID: 99, namespace: "control", title: "visible", sourcePID: 10)
+        let cache = ItemCache(
+            displayID: nil,
+            visibleItems: [cpu, memory, network],
+            hiddenItems: [neat],
+            alwaysHiddenItems: []
+        )
+        let preference = LayoutPreference(
+            savedOrder: SectionOrder(visible: [
+                "app:Neat",
+                "app:Memory",
+                "app:CPU",
+                "app:Network",
+            ])
+        )
+
+        let step = LayoutApplicationPlanner().nextStep(
+            cache: cache,
+            preference: preference,
+            sectionBoundaries: [.visible: visibleBoundary],
+            preferredItemUID: "app:CPU"
+        )
+
+        XCTAssertEqual(
+            step,
+            .move(
+                ResolvedLayoutMove(
+                    plannedMove: LayoutMove(itemUID: "app:CPU", target: .rightOfUID("app:Memory")),
+                    item: cpu,
+                    destination: .rightOfItem(memory)
+                )
+            )
+        )
+    }
 }

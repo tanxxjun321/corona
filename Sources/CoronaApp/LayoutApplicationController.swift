@@ -33,7 +33,10 @@ enum LayoutApplicationResult: Equatable {
 final class LayoutApplicationController {
     private enum Constants {
         static let verificationTolerancePixels: CGFloat = 8
-        static let enableDirectMouseMoveEnvironmentKey = "CORONA_ENABLE_DIRECT_MOUSE_MOVE"
+        static let enableDirectMoveEnvironmentKey = "CORONA_ENABLE_DIRECT_MENU_BAR_MOVE"
+        static let disableDirectMoveEnvironmentKey = "CORONA_DISABLE_DIRECT_MENU_BAR_MOVE"
+        static let legacyEnablePhysicalDragEnvironmentKey = "CORONA_ENABLE_PHYSICAL_MENU_BAR_DRAG"
+        static let legacyDisablePhysicalDragEnvironmentKey = "CORONA_DISABLE_PHYSICAL_MENU_BAR_DRAG"
     }
 
     private let cacheController: MenuBarCacheController
@@ -51,7 +54,7 @@ final class LayoutApplicationController {
         settingsStore: SettingsStore,
         boundaryProvider: @escaping @MainActor () -> SectionBoundary?,
         boundaryItemsProvider: @escaping @MainActor () -> [MenuBarSection: MenuBarItem],
-        executor: MoveEventExecutor = DirectMoveEventExecutor(),
+        executor: MoveEventExecutor = MenuBarDirectEventExecutor(),
         logger: DiagnosticLogging = DisabledDiagnosticLogger()
     ) {
         self.cacheController = cacheController
@@ -104,7 +107,26 @@ final class LayoutApplicationController {
         layoutStore.saveSavedSectionOrder(desiredOrder)
         layoutStore.saveKnownItemIdentifiers(Set(desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden))
         CoronaDebugLog.log("layout.applySingleMove savedIntent uid=\(uid) visible=\(desiredOrder.visible) hidden=\(desiredOrder.hidden) alwaysHidden=\(desiredOrder.alwaysHidden)")
-        return await applySavedLayout()
+        let firstResult = await applyNextStep(preferredItemUID: uid)
+        CoronaDebugLog.log("layout.applySingleMove preferredResult uid=\(uid) result=\(firstResult.statusTitle)")
+        switch firstResult {
+        case .moved:
+            let remainingResult = await applySavedLayout(maxSteps: 19)
+            switch remainingResult {
+            case .satisfied:
+                return firstResult
+            case .applied(let count):
+                return .applied(count + 1)
+            case .moved:
+                return .applied(2)
+            case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
+                return remainingResult
+            }
+        case .satisfied:
+            return await applySavedLayout()
+        case .waitingForItem, .waitingForDestination, .missingBoundary, .failed, .applied:
+            return firstResult
+        }
     }
 
     func reveal(uid: String, maxSteps: Int = 8) async -> LayoutApplicationResult {
@@ -157,7 +179,7 @@ final class LayoutApplicationController {
         return .failed("maxStepsExceeded")
     }
 
-    private func applyNextStep() async -> LayoutApplicationResult {
+    private func applyNextStep(preferredItemUID: String? = nil) async -> LayoutApplicationResult {
         guard let boundary = await boundaryProvider() else {
             CoronaDebugLog.log("layout.applyNextStep missingBoundary")
             return .missingBoundary
@@ -181,7 +203,8 @@ final class LayoutApplicationController {
             let step = planner.nextStep(
                 cache: manageableCache,
                 preference: preference,
-                sectionBoundaries: await boundaryItemsProvider()
+                sectionBoundaries: await boundaryItemsProvider(),
+                preferredItemUID: preferredItemUID
             )
             CoronaDebugLog.log("layout.applyNextStep planned=\(debugDescription(for: step))")
 
@@ -216,23 +239,14 @@ final class LayoutApplicationController {
         case .move(let resolvedMove):
             logger.log(.moveStarted(uid: resolvedMove.plannedMove.itemUID, target: resolvedMove.plannedMove.target))
             CoronaDebugLog.log("layout.move start uid=\(resolvedMove.plannedMove.itemUID) target=\(resolvedMove.plannedMove.target) destination=\(debugDescription(for: resolvedMove.destination)) itemBounds=\(resolvedMove.item.bounds.debugDescription)")
-            let fallbackResult = await PersistentMenuBarLayoutFallback().apply(
-                desiredOrder: layoutStore.loadSavedSectionOrder(),
-                movedUID: resolvedMove.plannedMove.itemUID
-            )
-            CoronaDebugLog.log("layout.move persistentFallback result=\(fallbackResult.debugDescription)")
-            if fallbackResult.didApply {
-                return .moved(resolvedMove.plannedMove.itemUID)
-            }
-
-            guard Self.directMouseMoveEnabled else {
+            guard Self.directMoveEnabled else {
                 logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: false))
-                CoronaDebugLog.log("layout.move skippedDirectMouse uid=\(resolvedMove.plannedMove.itemUID) fallback=\(fallbackResult.debugDescription)")
-                return .failed("backgroundMoveUnavailable; direct mouse move disabled")
+                CoronaDebugLog.log("layout.move skippedDirectMove uid=\(resolvedMove.plannedMove.itemUID)")
+                return .failed("directMenuBarMoveUnavailable")
             }
 
             var lastError: Error?
-            for attempt in 0..<3 {
+            for attempt in 0..<Self.maxMoveVerificationAttempts {
                 do {
                     let latestCache = attempt == 0 ? cache : try await cacheController.cache(boundary: boundary)
                     let latestItem = latestCache.item(withStableIdentifier: resolvedMove.plannedMove.itemUID) ?? resolvedMove.item
@@ -275,8 +289,41 @@ final class LayoutApplicationController {
         }
     }
 
-    private static var directMouseMoveEnabled: Bool {
-        ProcessInfo.processInfo.environment[Constants.enableDirectMouseMoveEnvironmentKey] == "1"
+    private static var directMoveEnabled: Bool {
+        let environment = ProcessInfo.processInfo.environment
+        if isTruthy(environment[Constants.disableDirectMoveEnvironmentKey])
+            || isTruthy(environment[Constants.legacyDisablePhysicalDragEnvironmentKey]) {
+            return false
+        }
+        let explicitValue = environment[Constants.enableDirectMoveEnvironmentKey]
+            ?? environment[Constants.legacyEnablePhysicalDragEnvironmentKey]
+        guard let explicitValue else {
+            return true
+        }
+        return !isFalsey(explicitValue)
+    }
+
+    private static var maxMoveVerificationAttempts: Int {
+        2
+    }
+
+    private static func isTruthy(_ value: String?) -> Bool {
+        guard let value else { return false }
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "1", "true", "yes", "on":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isFalsey(_ value: String) -> Bool {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "0", "false", "no", "off":
+            return true
+        default:
+            return false
+        }
     }
 
     private func targetSectionIsSatisfied(
@@ -528,141 +575,13 @@ private extension MenuBarItem {
     }
 }
 
-private extension NSScreen {
-    var displayID: CGDirectDisplayID {
-        deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
-    }
-}
-
 private extension SectionBoundary {
     func isOnSameDisplay(as displayID: UInt32?) -> Bool {
-        let displayFrame = displayID.map(CGDisplayBounds) ?? CGDisplayBounds(CGMainDisplayID())
+        let displayFrame = displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
         guard hiddenControlBounds.intersects(displayFrame) else { return false }
         if let alwaysHiddenControlBounds {
             return alwaysHiddenControlBounds.intersects(displayFrame)
         }
         return true
-    }
-}
-
-private struct PersistentMenuBarLayoutFallback {
-    private static let enabledEnvironmentKey = "CORONA_ENABLE_CONTROL_CENTER_PLIST_FALLBACK"
-    private static let domain = "com.apple.controlcenter"
-    private static let candidateOrderKeys = [
-        "NSStatusItem Preferred Position Item-Ordering",
-        "NSStatusItem Visible Item-Ordering",
-        "MenuExtras",
-        "menuExtras"
-    ]
-
-    func apply(desiredOrder: SectionOrder, movedUID: String) async -> Result {
-        guard ProcessInfo.processInfo.environment[Self.enabledEnvironmentKey] == "1" else {
-            return .disabled
-        }
-
-        let desiredUIDs = desiredOrder.visible + desiredOrder.hidden + desiredOrder.alwaysHidden
-        guard !desiredUIDs.isEmpty else {
-            return .unavailable("emptyDesiredOrder")
-        }
-
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Preferences/\(Self.domain).plist")
-        guard let plist = NSMutableDictionary(contentsOf: url) else {
-            return .unavailable("missingPlist:\(url.path)")
-        }
-
-        for key in Self.candidateOrderKeys {
-            guard let currentArray = plist[key] as? [String], !currentArray.isEmpty else {
-                continue
-            }
-
-            let reordered = reorderedSystemArray(currentArray, desiredUIDs: desiredUIDs)
-            guard reordered != currentArray else {
-                continue
-            }
-
-            plist[key] = reordered
-            guard plist.write(to: url, atomically: true) else {
-                return .failed("writeFailed:\(url.path)")
-            }
-
-            CFPreferencesAppSynchronize(Self.domain as CFString)
-            notifyControlCenterReload()
-            return .applied(key: key, movedUID: movedUID)
-        }
-
-        return .unavailable("noKnownOrderArray")
-    }
-
-    private func reorderedSystemArray(_ currentArray: [String], desiredUIDs: [String]) -> [String] {
-        let rankByToken = Dictionary(uniqueKeysWithValues: desiredUIDs.enumerated().flatMap { index, uid in
-            identifierTokens(for: uid).map { ($0, index) }
-        })
-
-        return currentArray.enumerated().sorted { lhs, rhs in
-            let lhsRank = bestRank(for: lhs.element, rankByToken: rankByToken) ?? Int.max
-            let rhsRank = bestRank(for: rhs.element, rankByToken: rankByToken) ?? Int.max
-            if lhsRank != rhsRank {
-                return lhsRank < rhsRank
-            }
-            return lhs.offset < rhs.offset
-        }.map(\.element)
-    }
-
-    private func bestRank(for systemIdentifier: String, rankByToken: [String: Int]) -> Int? {
-        let lowercased = systemIdentifier.lowercased()
-        return rankByToken.compactMap { token, rank in
-            lowercased.contains(token) ? rank : nil
-        }.min()
-    }
-
-    private func identifierTokens(for uid: String) -> [String] {
-        uid.lowercased()
-            .split(separator: ":")
-            .map(String.init)
-            .filter { $0.count >= 4 && !$0.hasPrefix("item-") }
-    }
-
-    private func notifyControlCenterReload() {
-        let notification = "com.apple.controlcenter.preferences-changed" as CFString
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDistributedCenter(),
-            CFNotificationName(notification),
-            nil,
-            nil,
-            true
-        )
-
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        task.arguments = ["ControlCenter"]
-        try? task.run()
-    }
-
-    enum Result {
-        case disabled
-        case unavailable(String)
-        case failed(String)
-        case applied(key: String, movedUID: String)
-
-        var didApply: Bool {
-            if case .applied = self {
-                return true
-            }
-            return false
-        }
-
-        var debugDescription: String {
-            switch self {
-            case .disabled:
-                return "disabled"
-            case .unavailable(let reason):
-                return "unavailable(\(reason))"
-            case .failed(let reason):
-                return "failed(\(reason))"
-            case .applied(let key, let movedUID):
-                return "applied key=\(key) movedUID=\(movedUID)"
-            }
-        }
     }
 }

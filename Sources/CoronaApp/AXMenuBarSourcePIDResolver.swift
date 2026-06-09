@@ -141,7 +141,7 @@ struct AXOrderedMenuBarScanner {
                 return copy
             }
 
-        CoronaDebugLog.log("discovery.ax phase1 records=\(sorted.count) order=\(sorted.map { "\($0.bundleIdentifier ?? $0.applicationName ?? "pid.\($0.sourcePID)"):item-\($0.globalOrdinal)@\($0.bounds.debugDescription)" })")
+        CoronaDebugLog.verbose("discovery.ax phase1 records=\(sorted.count) order=\(sorted.map { "\($0.bundleIdentifier ?? $0.applicationName ?? "pid.\($0.sourcePID)"):item-\($0.globalOrdinal)@\($0.bounds.debugDescription)" })")
         return sorted
     }
 
