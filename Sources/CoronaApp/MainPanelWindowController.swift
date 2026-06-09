@@ -280,6 +280,7 @@ final class MainPanelViewModel: ObservableObject {
     private var refreshGeneration = 0
     private var postApplyRefreshTask: Task<Void, Never>?
     private var isWaitingForMenuStability = false
+    private var userDragSuspensionCount = 0
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
     private var didExpandMenuBarForRendering = false
@@ -337,7 +338,7 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     func refreshLive() {
-        guard !isApplying, !isWaitingForMenuStability else { return }
+        guard !isRefreshSuspended else { return }
         guard hasRows else { return }
         refresh(showLoading: false, allowVisibilityChanges: false)
     }
@@ -352,8 +353,8 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func refresh(showLoading: Bool, allowVisibilityChanges: Bool) {
-        guard !isApplying, !isWaitingForMenuStability else {
-            logRefresh("main.refresh skippedDuringApplyOrStabilityWait", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
+        guard !isRefreshSuspended else {
+            logRefresh("main.refresh skippedSuspended applying=\(isApplying) stability=\(isWaitingForMenuStability) dragging=\(isUserDraggingItems)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
             return
         }
         guard !isRefreshing else { return }
@@ -435,6 +436,25 @@ final class MainPanelViewModel: ObservableObject {
 
     private func logRefresh(_ message: String, showLoading: Bool, allowVisibilityChanges: Bool) {
         CoronaDebugLog.verbose(message)
+    }
+
+    private var isUserDraggingItems: Bool {
+        userDragSuspensionCount > 0
+    }
+
+    private var isRefreshSuspended: Bool {
+        isApplying || isWaitingForMenuStability || isUserDraggingItems
+    }
+
+    func beginInteractiveDrag() {
+        userDragSuspensionCount += 1
+        cancelActiveRefresh(reason: "drag")
+        CoronaDebugLog.verbose("main.refresh suspendedForDrag count=\(userDragSuspensionCount)")
+    }
+
+    func endInteractiveDrag() {
+        userDragSuspensionCount = max(0, userDragSuspensionCount - 1)
+        CoronaDebugLog.verbose("main.refresh resumedAfterDrag count=\(userDragSuspensionCount)")
     }
 
     func setHidden(_ hidden: Bool, uid: String) {
@@ -569,7 +589,7 @@ final class MainPanelViewModel: ObservableObject {
             return
         }
 
-        cancelActiveRefresh()
+        cancelActiveRefresh(reason: "apply")
         cancelPostApplyRefresh()
         isApplying = true
         statusMessage = nil
@@ -578,13 +598,13 @@ final class MainPanelViewModel: ObservableObject {
         }
     }
 
-    private func cancelActiveRefresh() {
+    private func cancelActiveRefresh(reason: String) {
         activeRefreshTask?.cancel()
         activeRefreshTask = nil
         refreshGeneration += 1
         isRefreshing = false
         isLoading = false
-        CoronaDebugLog.verbose("main.refresh cancelledForApply")
+        CoronaDebugLog.verbose("main.refresh cancelled reason=\(reason)")
     }
 
     private func cancelPostApplyRefresh() {
@@ -921,7 +941,7 @@ final class MainPanelViewModel: ObservableObject {
         CoronaDebugLog.log("main.render.expandForFallback count=\(failedUIDs.count) uids=\(failedUIDs)")
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !Task.isCancelled, !isApplying else { return }
+            guard !Task.isCancelled, !isRefreshSuspended else { return }
             refresh(showLoading: false, allowVisibilityChanges: false)
         }
     }
@@ -1636,6 +1656,9 @@ private final class LayoutRailItemView: NSView, NSDraggingSource {
         if let container = superview as? LayoutRailContainer {
             container.canSetItems = false
         }
+        Task { @MainActor [weak model] in
+            model?.beginInteractiveDrag()
+        }
         session.animatesToStartingPositionsOnCancelOrFail = false
         DispatchQueue.main.async {
             self.isDraggingPlaceholder = true
@@ -1647,6 +1670,9 @@ private final class LayoutRailItemView: NSView, NSDraggingSource {
             oldContainerInfo = nil
         }
         isDraggingPlaceholder = false
+        Task { @MainActor [weak model] in
+            model?.endInteractiveDrag()
+        }
         if !hasContainer,
            let (container, index) = oldContainerInfo {
             container.shouldAnimateNextLayoutPass = false
