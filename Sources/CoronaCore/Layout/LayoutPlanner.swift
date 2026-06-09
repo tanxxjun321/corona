@@ -69,6 +69,10 @@ public struct LayoutPlanner {
             return move
         }
 
+        if let move = nextCrossSectionMove(currentOrder: currentOrder, desiredOrder: desiredOrder) {
+            return move
+        }
+
         for section in MenuBarSection.allCases {
             let current = currentOrder[section].filter { desiredOrder[section].contains($0) }
             let desired = desiredOrder[section]
@@ -78,7 +82,7 @@ public struct LayoutPlanner {
             }
         }
 
-        return nextCrossSectionMove(currentOrder: currentOrder, desiredOrder: desiredOrder)
+        return nil
     }
 
     private func preferredMove(

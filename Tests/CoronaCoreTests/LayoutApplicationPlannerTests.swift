@@ -116,6 +116,32 @@ final class LayoutApplicationPlannerTests: XCTestCase {
         )
     }
 
+    func testRestoresHiddenItemBeforeVisibleReordering() {
+        let a = makeItem(windowID: 1, namespace: "app", title: "A", sourcePID: 10)
+        let b = makeItem(windowID: 2, namespace: "app", title: "B", sourcePID: 10)
+        let hidden = makeItem(windowID: 3, namespace: "app", title: "Hidden", sourcePID: 10)
+        let hiddenBoundary = makeItem(windowID: 99, namespace: "control", title: "hidden", sourcePID: 10)
+        let cache = ItemCache(displayID: nil, visibleItems: [b, a, hidden], hiddenItems: [], alwaysHiddenItems: [])
+        let preference = LayoutPreference(savedOrder: SectionOrder(visible: ["app:A", "app:B"], hidden: ["app:Hidden"]))
+
+        let step = LayoutApplicationPlanner().nextStep(
+            cache: cache,
+            preference: preference,
+            sectionBoundaries: [.hidden: hiddenBoundary]
+        )
+
+        XCTAssertEqual(
+            step,
+            .move(
+                ResolvedLayoutMove(
+                    plannedMove: LayoutMove(itemUID: "app:Hidden", target: .sectionBoundary(.hidden)),
+                    item: hidden,
+                    destination: .leftOfItem(hiddenBoundary)
+                )
+            )
+        )
+    }
+
     func testUsesSavedHiddenOrderWhenPhysicalHiddenOrderDiffers() {
         let a = makeItem(windowID: 1, namespace: "app", title: "A", sourcePID: 10)
         let b = makeItem(windowID: 2, namespace: "app", title: "B", sourcePID: 10)

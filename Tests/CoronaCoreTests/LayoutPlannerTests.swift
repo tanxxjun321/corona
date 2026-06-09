@@ -131,6 +131,15 @@ final class LayoutPlannerTests: XCTestCase {
         XCTAssertEqual(move, LayoutMove(itemUID: "b", target: .sectionBoundary(.visible)))
     }
 
+    func testHiddenSectionRestoreRunsBeforeVisibleReordering() {
+        let current = SectionOrder(visible: ["b", "a", "hidden"])
+        let desired = SectionOrder(visible: ["a", "b"], hidden: ["hidden"])
+
+        let move = LayoutPlanner().nextMove(currentOrder: current, desiredOrder: desired)
+
+        XCTAssertEqual(move, LayoutMove(itemUID: "hidden", target: .sectionBoundary(.hidden)))
+    }
+
     func testVisibleRestorationTakesPriorityOverVisibleReordering() {
         let current = SectionOrder(visible: ["c", "a"], hidden: ["b"])
         let desired = SectionOrder(visible: ["a", "b", "c"], hidden: [])
