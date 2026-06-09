@@ -201,7 +201,9 @@ private struct MenuBarStabilitySignature: Equatable {
 final class MainPanelViewModel: ObservableObject {
     private enum Constants {
         static let menuStabilityPollIntervalNanoseconds: UInt64 = 120_000_000
-        static let menuStabilityMaxPolls = 10
+        static let menuStabilityCaptureDelayNanoseconds: UInt64 = 180_000_000
+        static let menuStabilityRequiredStableSamples = 3
+        static let menuStabilityMaxPolls = 14
     }
 
     enum ApplyStatus: Equatable {
@@ -655,6 +657,8 @@ final class MainPanelViewModel: ObservableObject {
         postApplyRefreshTask = Task { @MainActor in
             await waitForMenuBarStability()
             guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: Constants.menuStabilityCaptureDelayNanoseconds)
+            guard !Task.isCancelled else { return }
             isWaitingForMenuStability = false
             postApplyRefreshTask = nil
             CoronaDebugLog.log("main.autoApply refreshAfterStability")
@@ -664,16 +668,22 @@ final class MainPanelViewModel: ObservableObject {
 
     private func waitForMenuBarStability() async {
         var previousSignature: MenuBarStabilitySignature?
+        var stableSampleCount = 0
 
         for _ in 0..<Constants.menuStabilityMaxPolls where !Task.isCancelled {
             do {
                 let cache = try await currentCache(allowVisibilityChanges: false)
                 let signature = MenuBarStabilitySignature(cache: cache)
                 if previousSignature == signature {
-                    CoronaDebugLog.verbose("main.autoApply menuStable items=\(signature.items.count)")
-                    return
+                    stableSampleCount += 1
+                    if stableSampleCount >= Constants.menuStabilityRequiredStableSamples {
+                        CoronaDebugLog.verbose("main.autoApply menuStable items=\(signature.items.count) samples=\(stableSampleCount)")
+                        return
+                    }
+                } else {
+                    previousSignature = signature
+                    stableSampleCount = 1
                 }
-                previousSignature = signature
             } catch {
                 CoronaDebugLog.log("main.autoApply stabilityCheckFailed error=\(String(describing: error))")
                 return
