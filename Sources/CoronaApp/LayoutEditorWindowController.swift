@@ -83,6 +83,10 @@ final class LayoutEditorViewModel: ObservableObject {
     }
 
     func refresh() {
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            CoronaDebugLog.verbose("layoutEditor.refresh skippedVisualCaptureSuspended")
+            return
+        }
         isLoading = true
         errorMessage = nil
         Task {

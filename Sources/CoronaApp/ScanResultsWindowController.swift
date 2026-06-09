@@ -70,6 +70,10 @@ final class ScanResultsViewModel: ObservableObject {
     }
 
     func refresh() {
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            CoronaDebugLog.verbose("scan.refresh skippedVisualCaptureSuspended")
+            return
+        }
         isLoading = true
         errorMessage = nil
         Task {

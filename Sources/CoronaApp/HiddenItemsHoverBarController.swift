@@ -223,6 +223,10 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     func refresh(on screen: NSScreen? = nil) {
         guard !isRefreshing, permissionChecker.snapshot().canRunCoreFeatures else { return }
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            CoronaDebugLog.verbose("hoverBar.refresh skippedVisualCaptureSuspended")
+            return
+        }
         if let lastRefreshAt, Date().timeIntervalSince(lastRefreshAt) < 0.35 {
             return
         }
@@ -236,6 +240,10 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     func refreshNow(on screen: NSScreen? = nil) async {
         guard permissionChecker.snapshot().canRunCoreFeatures else { return }
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            CoronaDebugLog.verbose("hoverBar.refreshNow skippedVisualCaptureSuspended")
+            return
+        }
         do {
             let cache = targetScopedCache(try await visualCacheProvider(), on: screen)
             menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: cache.displayID ?? screen?.displayID)
@@ -293,6 +301,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
 
     func refreshTriggerFrame(on screen: NSScreen) {
         guard !isRefreshingTriggerFrame, permissionChecker.snapshot().canRunCoreFeatures else { return }
+        guard !MenuBarVisualCaptureGate.isSuspended else { return }
         if let lastTriggerRefreshAt, Date().timeIntervalSince(lastTriggerRefreshAt) < 0.4 {
             return
         }

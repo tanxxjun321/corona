@@ -34,6 +34,40 @@ final class MenuBarController {
     private var startupLayoutRestoreTask: Task<Void, Never>?
     private var visualCapturePreviousVisibility: (hidden: StatusSectionVisibility, alwaysHidden: StatusSectionVisibility)?
 
+    private struct StabilitySignature: Equatable {
+        var items: [Item]
+
+        struct Item: Equatable {
+            var uid: String
+            var x: Int
+            var y: Int
+            var width: Int
+            var height: Int
+        }
+
+        init(cache: ItemCache) {
+            items = cache.allItems
+                .sorted { lhs, rhs in
+                    if lhs.bounds.minX != rhs.bounds.minX {
+                        return lhs.bounds.minX < rhs.bounds.minX
+                    }
+                    if lhs.bounds.minY != rhs.bounds.minY {
+                        return lhs.bounds.minY < rhs.bounds.minY
+                    }
+                    return lhs.tag.stableIdentifier < rhs.tag.stableIdentifier
+                }
+                .map { item in
+                    Item(
+                        uid: item.tag.stableIdentifier,
+                        x: Int(item.bounds.minX.rounded()),
+                        y: Int(item.bounds.minY.rounded()),
+                        width: Int(item.bounds.width.rounded()),
+                        height: Int(item.bounds.height.rounded())
+                    )
+                }
+        }
+    }
+
     init(
         settingsStore: SettingsStore,
         permissionChecker: SystemPermissionChecker
@@ -544,6 +578,9 @@ final class MenuBarController {
     }
 
     private func applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: Bool = false) async -> LayoutApplicationResult {
+        var captureToken = MenuBarVisualCaptureGate.acquire(reason: "main.applySavedLayout")
+        defer { captureToken.release() }
+
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
 
@@ -567,12 +604,16 @@ final class MenuBarController {
             if settings.enableAlwaysHiddenSection {
                 sectionController.setAlwaysHiddenSectionVisible(false)
             }
+            await waitForMenuBarLayoutToSettle()
         }
         rebuildMenu()
         return result
     }
 
     private func applySingleMoveWithVisibleBoundary(uid: String, desiredOrder: SectionOrder) async -> LayoutApplicationResult {
+        var captureToken = MenuBarVisualCaptureGate.acquire(reason: "main.applySingleMove")
+        defer { captureToken.release() }
+
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
 
@@ -596,9 +637,40 @@ final class MenuBarController {
             if settings.enableAlwaysHiddenSection {
                 sectionController.setAlwaysHiddenSectionVisible(false)
             }
+            await waitForMenuBarLayoutToSettle()
         }
         rebuildMenu()
         return result
+    }
+
+    private func waitForMenuBarLayoutToSettle() async {
+        var previousSignature: StabilitySignature?
+        var stableSampleCount = 0
+        let requiredStableSamples = 3
+        let maxPolls = 12
+
+        for _ in 0..<maxPolls where !Task.isCancelled {
+            do {
+                let cache = try await currentMenuBarCacheWithoutChangingVisibility()
+                let signature = StabilitySignature(cache: cache)
+                if previousSignature == signature {
+                    stableSampleCount += 1
+                    if stableSampleCount >= requiredStableSamples {
+                        CoronaDebugLog.verbose("main.menuStable items=\(signature.items.count) samples=\(stableSampleCount)")
+                        return
+                    }
+                } else {
+                    previousSignature = signature
+                    stableSampleCount = 1
+                }
+            } catch {
+                CoronaDebugLog.log("main.menuStabilityCheckFailed error=\(String(describing: error))")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        CoronaDebugLog.log("main.menuStabilityTimeout")
     }
 
     private func savedLayoutIsActuallySatisfied() async -> Bool {

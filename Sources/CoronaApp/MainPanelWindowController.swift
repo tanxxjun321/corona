@@ -281,6 +281,7 @@ final class MainPanelViewModel: ObservableObject {
     private var postApplyRefreshTask: Task<Void, Never>?
     private var isWaitingForMenuStability = false
     private var userDragSuspensionCount = 0
+    private var visualCaptureSuspension: MenuBarVisualCaptureGate.Token?
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
     private var didExpandMenuBarForRendering = false
@@ -339,6 +340,7 @@ final class MainPanelViewModel: ObservableObject {
 
     func refreshLive() {
         guard !isRefreshSuspended else { return }
+        guard !MenuBarVisualCaptureGate.isSuspended else { return }
         guard hasRows else { return }
         refresh(showLoading: false, allowVisibilityChanges: false)
     }
@@ -355,6 +357,10 @@ final class MainPanelViewModel: ObservableObject {
     private func refresh(showLoading: Bool, allowVisibilityChanges: Bool) {
         guard !isRefreshSuspended else {
             logRefresh("main.refresh skippedSuspended applying=\(isApplying) stability=\(isWaitingForMenuStability) dragging=\(isUserDraggingItems)", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
+            return
+        }
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            logRefresh("main.refresh skippedVisualCaptureSuspended", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
             return
         }
         guard !isRefreshing else { return }
@@ -592,6 +598,7 @@ final class MainPanelViewModel: ObservableObject {
         cancelActiveRefresh(reason: "apply")
         cancelPostApplyRefresh()
         isApplying = true
+        beginVisualCaptureSuspension(reason: "main.autoApply")
         statusMessage = nil
         Task {
             await runAutoApplyLoop(initialOrder: sanitizedOrder, movedUID: movedUID)
@@ -611,6 +618,18 @@ final class MainPanelViewModel: ObservableObject {
         postApplyRefreshTask?.cancel()
         postApplyRefreshTask = nil
         isWaitingForMenuStability = false
+        endVisualCaptureSuspension()
+    }
+
+    private func beginVisualCaptureSuspension(reason: String) {
+        guard visualCaptureSuspension == nil else { return }
+        visualCaptureSuspension = MenuBarVisualCaptureGate.acquire(reason: reason)
+    }
+
+    private func endVisualCaptureSuspension() {
+        guard var suspension = visualCaptureSuspension else { return }
+        suspension.release()
+        visualCaptureSuspension = nil
     }
 
     private func persistDraft() -> SectionOrder {
@@ -666,6 +685,7 @@ final class MainPanelViewModel: ObservableObject {
                     : result.statusTitle
                 CoronaDebugLog.log("main.autoApply keepDraftAfterFailure visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
                 rebuildRows()
+                endVisualCaptureSuspension()
             }
             return
         }
@@ -681,6 +701,7 @@ final class MainPanelViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             isWaitingForMenuStability = false
             postApplyRefreshTask = nil
+            endVisualCaptureSuspension()
             CoronaDebugLog.log("main.autoApply refreshAfterStability")
             refresh(showLoading: false, allowVisibilityChanges: false)
         }

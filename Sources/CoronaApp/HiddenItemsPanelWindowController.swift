@@ -81,6 +81,10 @@ final class HiddenItemsPanelViewModel: ObservableObject {
     }
 
     func refresh() {
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            CoronaDebugLog.verbose("hiddenPanel.refresh skippedVisualCaptureSuspended")
+            return
+        }
         isLoading = true
         errorMessage = nil
         Task {

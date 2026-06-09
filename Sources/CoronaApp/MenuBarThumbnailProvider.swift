@@ -2,6 +2,50 @@ import AppKit
 import CoreGraphics
 import UniformTypeIdentifiers
 
+enum MenuBarVisualCaptureGate {
+    private static let lock = NSLock()
+    private static var suspensionCount = 0
+
+    static var isSuspended: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return suspensionCount > 0
+    }
+
+    @discardableResult
+    static func acquire(reason: String) -> Token {
+        lock.lock()
+        suspensionCount += 1
+        let count = suspensionCount
+        lock.unlock()
+        CoronaDebugLog.verbose("visualCapture.suspended reason=\(reason) count=\(count)")
+        return Token(reason: reason)
+    }
+
+    fileprivate static func release(reason: String) {
+        lock.lock()
+        suspensionCount = max(0, suspensionCount - 1)
+        let count = suspensionCount
+        lock.unlock()
+        CoronaDebugLog.verbose("visualCapture.resumed reason=\(reason) count=\(count)")
+    }
+
+    struct Token {
+        private let reason: String
+        private var isReleased = false
+
+        fileprivate init(reason: String) {
+            self.reason = reason
+        }
+
+        mutating func release() {
+            guard !isReleased else { return }
+            isReleased = true
+            MenuBarVisualCaptureGate.release(reason: reason)
+        }
+    }
+}
+
 protocol MenuBarThumbnailProviding {
     func thumbnailResult(for item: MenuBarItem) -> MenuBarThumbnailResult
 }
@@ -30,6 +74,9 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
     func thumbnailResult(for item: MenuBarItem) -> MenuBarThumbnailResult {
         let settings = settingsStore.load()
         let permissions = permissionChecker.snapshot()
+        guard !MenuBarVisualCaptureGate.isSuspended else {
+            return MenuBarThumbnailResult(image: fallbackImage(for: item), isPixelPreview: false)
+        }
         guard settings.enableScreenRecordingPreviews,
               permissions.canShowPixelPreviews,
               let image = windowImage(for: item) else {
