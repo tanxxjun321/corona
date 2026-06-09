@@ -86,6 +86,20 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
         let windowID = CGWindowID(item.windowID)
         let options: CGWindowImageOption = [.boundsIgnoreFraming, .bestResolution]
 
+        if let cgImage = skyLightImageProvider.image(for: windowID, bounds: .null, options: options),
+           hasVisibleContent(cgImage) {
+            return NSImage(cgImage: cgImage, size: item.bounds.size)
+        }
+
+        if let cgImage = CGWindowListCreateImage(
+            .null,
+            .optionIncludingWindow,
+            windowID,
+            options
+        ), hasVisibleContent(cgImage) {
+            return NSImage(cgImage: cgImage, size: item.bounds.size)
+        }
+
         if let cgImage = CGWindowListCreateImage(
             item.bounds,
             .optionIncludingWindow,
@@ -96,11 +110,6 @@ struct MenuBarThumbnailProvider: MenuBarThumbnailProviding {
         }
 
         if let cgImage = skyLightImageProvider.image(for: windowID, bounds: item.bounds, options: options),
-           hasVisibleContent(cgImage) {
-            return NSImage(cgImage: cgImage, size: item.bounds.size)
-        }
-
-        if let cgImage = skyLightImageProvider.image(for: windowID, bounds: .null, options: options),
            hasVisibleContent(cgImage) {
             return NSImage(cgImage: cgImage, size: item.bounds.size)
         }
