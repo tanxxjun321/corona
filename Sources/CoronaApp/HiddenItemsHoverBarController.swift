@@ -244,6 +244,7 @@ final class HiddenItemsHoverBarModel: ObservableObject {
             CoronaDebugLog.verbose("hoverBar.refreshNow skippedVisualCaptureSuspended")
             return
         }
+        defer { visualCacheCleanup() }
         do {
             let cache = targetScopedCache(try await visualCacheProvider(), on: screen)
             menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: cache.displayID ?? screen?.displayID)
@@ -266,7 +267,6 @@ final class HiddenItemsHoverBarModel: ObservableObject {
         } catch {
             CoronaDebugLog.log("hoverBar.refresh failed error=\(String(describing: error))")
         }
-        visualCacheCleanup()
     }
 
     private func currentCache() async throws -> ItemCache {

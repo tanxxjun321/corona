@@ -625,11 +625,9 @@ final class MenuBarController {
         }
 
         if result.isSuccessfulApply || collapseAfterAttempt {
-            sectionController.setHiddenSectionVisible(false)
-            if settings.enableAlwaysHiddenSection {
-                sectionController.setAlwaysHiddenSectionVisible(false)
-            }
-            await waitForMenuBarLayoutToSettle()
+            await collapseHiddenSectionsAfterLayoutAttempt()
+        } else {
+            collapseHiddenSections()
         }
         rebuildMenu()
         return result
@@ -658,14 +656,24 @@ final class MenuBarController {
         }
 
         if result.isSuccessfulApply {
-            sectionController.setHiddenSectionVisible(false)
-            if settings.enableAlwaysHiddenSection {
-                sectionController.setAlwaysHiddenSectionVisible(false)
-            }
-            await waitForMenuBarLayoutToSettle()
+            await collapseHiddenSectionsAfterLayoutAttempt()
+        } else {
+            collapseHiddenSections()
         }
         rebuildMenu()
         return result
+    }
+
+    private func collapseHiddenSections() {
+        sectionController.setHiddenSectionVisible(false)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(false)
+        }
+    }
+
+    private func collapseHiddenSectionsAfterLayoutAttempt() async {
+        collapseHiddenSections()
+        await waitForMenuBarLayoutToSettle()
     }
 
     private func waitForMenuBarLayoutToSettle() async {

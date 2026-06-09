@@ -403,6 +403,7 @@ final class MainPanelViewModel: ObservableObject {
         let generation = refreshGeneration
         activeRefreshTask = Task {
             defer {
+                visualCacheCleanup()
                 if generation == refreshGeneration {
                     isRefreshing = false
                     activeRefreshTask = nil
@@ -457,7 +458,6 @@ final class MainPanelViewModel: ObservableObject {
                 CoronaDebugLog.log("main.refresh failed error=\(String(describing: error))")
                 errorMessage = String(describing: error)
             }
-            visualCacheCleanup()
         }
     }
 
