@@ -31,6 +31,7 @@ final class MenuBarController {
     private var layoutApplicationController: LayoutApplicationController?
     private var lastLayoutApplicationResult: LayoutApplicationResult?
     private var autoRehideTask: Task<Void, Never>?
+    private var startupLayoutRestoreTask: Task<Void, Never>?
     private var visualCapturePreviousVisibility: (hidden: StatusSectionVisibility, alwaysHidden: StatusSectionVisibility)?
 
     init(
@@ -60,11 +61,14 @@ final class MenuBarController {
         sanitizeSavedLayout()
         startHiddenItemsHoverBar()
         rebuildMenu()
+        scheduleStartupLayoutRestoreIfNeeded()
         showPermissionsOnFirstLaunchIfNeeded()
         showMainPanelOnLaunchIfReady()
     }
 
     deinit {
+        autoRehideTask?.cancel()
+        startupLayoutRestoreTask?.cancel()
         DistributedNotificationCenter.default().removeObserver(self)
     }
 
@@ -515,7 +519,31 @@ final class MenuBarController {
         return controller
     }
 
-    private func applySavedLayoutWithVisibleBoundary() async -> LayoutApplicationResult {
+    private func scheduleStartupLayoutRestoreIfNeeded() {
+        guard permissionChecker.snapshot().canRunCoreFeatures else { return }
+        guard shouldRestoreSavedLayoutOnStartup else { return }
+
+        startupLayoutRestoreTask?.cancel()
+        startupLayoutRestoreTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard let self, !Task.isCancelled, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
+            let result = await self.applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: true)
+            self.lastLayoutApplicationResult = result
+            CoronaDebugLog.log("startup.restoreSavedLayout result=\(result.statusTitle)")
+        }
+    }
+
+    private var shouldRestoreSavedLayoutOnStartup: Bool {
+        let order = layoutStore.loadSavedSectionOrder()
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
+        if !order.hidden.isEmpty || !order.alwaysHidden.isEmpty {
+            return true
+        }
+        return !layoutStore.loadPendingRelocations().isEmpty
+    }
+
+    private func applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: Bool = false) async -> LayoutApplicationResult {
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
 
@@ -534,7 +562,7 @@ final class MenuBarController {
             }
         }
 
-        if result.isSuccessfulApply {
+        if result.isSuccessfulApply || collapseAfterAttempt {
             sectionController.setHiddenSectionVisible(false)
             if settings.enableAlwaysHiddenSection {
                 sectionController.setAlwaysHiddenSectionVisible(false)
