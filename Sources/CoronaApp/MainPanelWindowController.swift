@@ -163,8 +163,47 @@ enum MainPanelTab: Hashable {
     case settings
 }
 
+private struct MenuBarStabilitySignature: Equatable {
+    struct Item: Equatable {
+        var uid: String
+        var x: Int
+        var y: Int
+        var width: Int
+        var height: Int
+    }
+
+    var items: [Item]
+
+    init(cache: ItemCache) {
+        items = cache.allItems
+            .sorted { lhs, rhs in
+                if lhs.bounds.minX != rhs.bounds.minX {
+                    return lhs.bounds.minX < rhs.bounds.minX
+                }
+                if lhs.bounds.minY != rhs.bounds.minY {
+                    return lhs.bounds.minY < rhs.bounds.minY
+                }
+                return lhs.tag.stableIdentifier < rhs.tag.stableIdentifier
+            }
+            .map { item in
+                Item(
+                    uid: item.tag.stableIdentifier,
+                    x: Int(item.bounds.minX.rounded()),
+                    y: Int(item.bounds.minY.rounded()),
+                    width: Int(item.bounds.width.rounded()),
+                    height: Int(item.bounds.height.rounded())
+                )
+            }
+    }
+}
+
 @MainActor
 final class MainPanelViewModel: ObservableObject {
+    private enum Constants {
+        static let menuStabilityPollIntervalNanoseconds: UInt64 = 120_000_000
+        static let menuStabilityMaxPolls = 10
+    }
+
     enum ApplyStatus: Equatable {
         case ready
         case pendingMove
@@ -237,6 +276,8 @@ final class MainPanelViewModel: ObservableObject {
     private var isRefreshing = false
     private var activeRefreshTask: Task<Void, Never>?
     private var refreshGeneration = 0
+    private var postApplyRefreshTask: Task<Void, Never>?
+    private var isWaitingForMenuStability = false
     private var newItemsSection: MenuBarSection = .visible
     private var newItemsPlacement: NewItemsPlacement = .append
     private var didExpandMenuBarForRendering = false
@@ -294,7 +335,7 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     func refreshLive() {
-        guard !isApplying else { return }
+        guard !isApplying, !isWaitingForMenuStability else { return }
         guard hasRows else { return }
         refresh(showLoading: false, allowVisibilityChanges: false)
     }
@@ -309,8 +350,8 @@ final class MainPanelViewModel: ObservableObject {
     }
 
     private func refresh(showLoading: Bool, allowVisibilityChanges: Bool) {
-        guard !isApplying else {
-            logRefresh("main.refresh skippedApplying", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
+        guard !isApplying, !isWaitingForMenuStability else {
+            logRefresh("main.refresh skippedDuringApplyOrStabilityWait", showLoading: showLoading, allowVisibilityChanges: allowVisibilityChanges)
             return
         }
         guard !isRefreshing else { return }
@@ -527,6 +568,7 @@ final class MainPanelViewModel: ObservableObject {
         }
 
         cancelActiveRefresh()
+        cancelPostApplyRefresh()
         isApplying = true
         statusMessage = nil
         Task {
@@ -541,6 +583,12 @@ final class MainPanelViewModel: ObservableObject {
         isRefreshing = false
         isLoading = false
         CoronaDebugLog.verbose("main.refresh cancelledForApply")
+    }
+
+    private func cancelPostApplyRefresh() {
+        postApplyRefreshTask?.cancel()
+        postApplyRefreshTask = nil
+        isWaitingForMenuStability = false
     }
 
     private func persistDraft() -> SectionOrder {
@@ -588,7 +636,8 @@ final class MainPanelViewModel: ObservableObject {
             isApplying = false
             if result.isSuccessfulApply {
                 statusMessage = result.statusTitle
-                CoronaDebugLog.log("main.autoApply successWithoutRefresh visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
+                CoronaDebugLog.log("main.autoApply successAwaitingStability visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
+                scheduleRefreshAfterMenuStabilizes()
             } else {
                 statusMessage = hasManualPlacementMismatches(in: orderForStatus)
                     ? "\(result.statusTitle). Some icons still need placement."
@@ -598,6 +647,41 @@ final class MainPanelViewModel: ObservableObject {
             }
             return
         }
+    }
+
+    private func scheduleRefreshAfterMenuStabilizes() {
+        postApplyRefreshTask?.cancel()
+        isWaitingForMenuStability = true
+        postApplyRefreshTask = Task { @MainActor in
+            await waitForMenuBarStability()
+            guard !Task.isCancelled else { return }
+            isWaitingForMenuStability = false
+            postApplyRefreshTask = nil
+            CoronaDebugLog.log("main.autoApply refreshAfterStability")
+            refresh(showLoading: false, allowVisibilityChanges: false)
+        }
+    }
+
+    private func waitForMenuBarStability() async {
+        var previousSignature: MenuBarStabilitySignature?
+
+        for _ in 0..<Constants.menuStabilityMaxPolls where !Task.isCancelled {
+            do {
+                let cache = try await currentCache(allowVisibilityChanges: false)
+                let signature = MenuBarStabilitySignature(cache: cache)
+                if previousSignature == signature {
+                    CoronaDebugLog.verbose("main.autoApply menuStable items=\(signature.items.count)")
+                    return
+                }
+                previousSignature = signature
+            } catch {
+                CoronaDebugLog.log("main.autoApply stabilityCheckFailed error=\(String(describing: error))")
+                return
+            }
+            try? await Task.sleep(nanoseconds: Constants.menuStabilityPollIntervalNanoseconds)
+        }
+
+        CoronaDebugLog.log("main.autoApply menuStabilityTimeout")
     }
 
     func openPermissions() {
