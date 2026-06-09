@@ -7,6 +7,7 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         static let frameCheckTimeoutNanoseconds: UInt64 = 120_000_000
         static let mouseStillSampleDelayNanoseconds: UInt64 = 45_000_000
         static let mouseStillMaxWaitNanoseconds: UInt64 = 450_000_000
+        static let cursorRestoreDelayNanoseconds: UInt64 = 20_000_000
     }
 
     private static let gate = MoveEventGate()
@@ -35,11 +36,16 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         if !skipInputPause {
             await waitForMouseToStopMoving()
         }
+        let cursorTransaction = MenuBarMoveCursorTransaction.begin(
+            syntheticMarker: Constants.syntheticEventMarker,
+            restoreDelayNanoseconds: Constants.cursorRestoreDelayNanoseconds
+        )
         let result = await runMoveTransaction(
             item: item,
             destination: destination,
             maxAttempts: maxAttempts
         )
+        await cursorTransaction.finish()
         await SnapshotPollingGate.shared.releaseSuspension()
         await Self.gate.release()
         CoronaDebugLog.log("executor.itemEvent gate released uid=\(item.tag.stableIdentifier)")
@@ -277,6 +283,138 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         case .rightOfItem(let item):
             return "rightOf uid=\(item.tag.stableIdentifier) bounds=\(item.bounds.debugDescription)"
         }
+    }
+}
+
+private struct MenuBarMoveCursorTransaction {
+    private let originalLocation: CGPoint?
+    private let restoreDelayNanoseconds: UInt64
+    private let suppressor: MouseEventSuppressionSession?
+
+    static func begin(
+        syntheticMarker: Int64,
+        restoreDelayNanoseconds: UInt64
+    ) -> MenuBarMoveCursorTransaction {
+        let originalLocation = CGEvent(source: nil)?.location
+        let suppressor = MouseEventSuppressionSession(syntheticMarker: syntheticMarker)
+        suppressor.start()
+        return MenuBarMoveCursorTransaction(
+            originalLocation: originalLocation,
+            restoreDelayNanoseconds: restoreDelayNanoseconds,
+            suppressor: suppressor
+        )
+    }
+
+    func finish() async {
+        if let originalLocation {
+            restoreMouseLocation(originalLocation)
+            try? await Task.sleep(nanoseconds: restoreDelayNanoseconds)
+            restoreMouseLocation(originalLocation)
+        }
+        suppressor?.stop()
+    }
+
+    private func restoreMouseLocation(_ location: CGPoint) {
+        let error = CGWarpMouseCursorPosition(location)
+        if error == .success {
+            CoronaDebugLog.verbose("executor.itemEvent restoredMouse location=\(location.debugDescription)")
+        } else {
+            CoronaDebugLog.log("executor.itemEvent restoreMouseFailed error=\(error.rawValue) location=\(location.debugDescription)")
+        }
+    }
+}
+
+private final class MouseEventSuppressionSession {
+    private let syntheticMarker: Int64
+    private var tap: CFMachPort?
+    private var source: CFRunLoopSource?
+    private var retainedSelf: Unmanaged<MouseEventSuppressionSession>?
+
+    init(syntheticMarker: Int64) {
+        self.syntheticMarker = syntheticMarker
+    }
+
+    func start() {
+        guard tap == nil else { return }
+        retainedSelf = Unmanaged.passRetained(self)
+        let refcon = UnsafeMutableRawPointer(retainedSelf!.toOpaque())
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: Self.eventMask,
+            callback: Self.callback,
+            userInfo: refcon
+        ) else {
+            CoronaDebugLog.log("executor.itemEvent suppressMouseFailed reason=createTap")
+            retainedSelf?.release()
+            retainedSelf = nil
+            return
+        }
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CoronaDebugLog.log("executor.itemEvent suppressMouseFailed reason=createRunLoopSource")
+            CGEvent.tapEnable(tap: tap, enable: false)
+            retainedSelf?.release()
+            retainedSelf = nil
+            return
+        }
+        self.tap = tap
+        self.source = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        CoronaDebugLog.verbose("executor.itemEvent suppressMouseStarted")
+    }
+
+    func stop() {
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let source {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        tap = nil
+        source = nil
+        let retained = retainedSelf
+        retainedSelf = nil
+        retained?.release()
+        CoronaDebugLog.verbose("executor.itemEvent suppressMouseStopped")
+    }
+
+    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap {
+                CGEvent.tapEnable(tap: tap, enable: true)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        if event.isCoronaSyntheticMenuBarEvent(syntheticMarker: syntheticMarker) {
+            return Unmanaged.passUnretained(event)
+        }
+
+        return nil
+    }
+
+    private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
+        guard let userInfo else { return Unmanaged.passUnretained(event) }
+        let session = Unmanaged<MouseEventSuppressionSession>.fromOpaque(userInfo).takeUnretainedValue()
+        return session.handle(type: type, event: event)
+    }
+
+    private static let eventMask: CGEventMask = [
+        CGEventType.mouseMoved,
+        .leftMouseDown,
+        .leftMouseUp,
+        .leftMouseDragged,
+        .rightMouseDown,
+        .rightMouseUp,
+        .rightMouseDragged,
+        .otherMouseDown,
+        .otherMouseUp,
+        .otherMouseDragged,
+        .scrollWheel,
+    ].reduce(0) { mask, type in
+        mask | (1 << CGEventMask(type.rawValue))
     }
 }
 
@@ -645,6 +783,10 @@ private extension CGEvent {
             return false
         }
         return true
+    }
+
+    func isCoronaSyntheticMenuBarEvent(syntheticMarker: Int64) -> Bool {
+        getIntegerValueField(.eventSourceUserData) > syntheticMarker
     }
 }
 
