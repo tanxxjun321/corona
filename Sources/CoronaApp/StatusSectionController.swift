@@ -5,6 +5,7 @@ enum StatusSectionVisibility {
     case hidden
 }
 
+@MainActor
 final class StatusSectionController {
     private enum Constants {
         static let compactLength: CGFloat = 10

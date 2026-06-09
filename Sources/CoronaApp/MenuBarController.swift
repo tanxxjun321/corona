@@ -8,6 +8,7 @@ enum StatusItemDefaults {
     }
 }
 
+@MainActor
 final class MenuBarController {
     private enum E2ENotification {
         static let collapseHiddenSections = Notification.Name("com.ltz.corona.e2e.collapseHiddenSections")
@@ -52,7 +53,6 @@ final class MenuBarController {
         self.settings = settingsStore.load()
     }
 
-    @MainActor
     func start() {
         configureStatusItem()
         installE2EObserversIfNeeded()
@@ -311,7 +311,6 @@ final class MenuBarController {
         scanResultsWindowController?.show()
     }
 
-    @MainActor
     private func startHiddenItemsHoverBar() {
         guard hiddenItemsHoverBarController == nil else { return }
         let controller = HiddenItemsHoverBarController(
@@ -516,7 +515,6 @@ final class MenuBarController {
         return controller
     }
 
-    @MainActor
     private func applySavedLayoutWithVisibleBoundary() async -> LayoutApplicationResult {
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
@@ -546,7 +544,6 @@ final class MenuBarController {
         return result
     }
 
-    @MainActor
     private func applySingleMoveWithVisibleBoundary(uid: String, desiredOrder: SectionOrder) async -> LayoutApplicationResult {
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
@@ -660,7 +657,7 @@ final class MenuBarController {
         }
     }
 
-    static func isCoronaSelfIdentifier(_ uid: String) -> Bool {
+    nonisolated static func isCoronaSelfIdentifier(_ uid: String) -> Bool {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "com.ltz.corona"
         return uid.localizedCaseInsensitiveContains(bundleIdentifier)
             || uid.localizedCaseInsensitiveContains("com.ltz.corona")
@@ -669,7 +666,7 @@ final class MenuBarController {
             || uid.localizedCaseInsensitiveContains("corona.control")
     }
 
-    static func isLegacyAXGeneratedIdentifier(_ uid: String) -> Bool {
+    nonisolated static func isLegacyAXGeneratedIdentifier(_ uid: String) -> Bool {
         let parts = uid.split(separator: ":").map(String.init)
         guard parts.count >= 2 else { return false }
         let title = parts[1]
@@ -682,17 +679,15 @@ final class MenuBarController {
         guard latestSettings.autoRehide else { return }
 
         autoRehideTask?.cancel()
-        autoRehideTask = Task { [weak self] in
+        autoRehideTask = Task { @MainActor [weak self] in
             let delay = UInt64(max(0.5, latestSettings.rehideInterval) * 1_000_000_000)
             try? await Task.sleep(nanoseconds: delay)
             guard let self, !Task.isCancelled, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
-            await MainActor.run {
-                self.sectionController.setHiddenSectionVisible(false)
-                if self.settings.enableAlwaysHiddenSection {
-                    self.sectionController.setAlwaysHiddenSectionVisible(false)
-                }
-                self.rebuildMenu()
+            self.sectionController.setHiddenSectionVisible(false)
+            if self.settings.enableAlwaysHiddenSection {
+                self.sectionController.setAlwaysHiddenSectionVisible(false)
             }
+            self.rebuildMenu()
         }
     }
 
