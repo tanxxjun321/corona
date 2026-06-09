@@ -562,7 +562,7 @@ final class MainPanelViewModel: ObservableObject {
             isApplying = false
             if result.isSuccessfulApply {
                 statusMessage = result.statusTitle
-                refresh(showLoading: false, allowVisibilityChanges: false)
+                CoronaDebugLog.log("main.autoApply successWithoutRefresh visible=\(draft.order.visible) hidden=\(draft.order.hidden) alwaysHidden=\(draft.order.alwaysHidden)")
             } else {
                 statusMessage = hasManualPlacementMismatches(in: orderForStatus)
                     ? "\(result.statusTitle). Some icons still need placement."
