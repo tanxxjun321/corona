@@ -457,14 +457,17 @@ final class MenuBarController {
         }
     }
 
+    /// Startup restore runs for any non-empty saved order — an all-visible
+    /// layout can still drift on screen — and whenever an interrupted apply
+    /// left a pending relocation behind (#19).
     private var shouldRestoreSavedLayoutOnStartup: Bool {
         let order = layoutStore.loadSavedSectionOrder()
             .removingCoronaSelfItems()
             .removingLegacyAXGeneratedItems()
-        if !order.hidden.isEmpty || !order.alwaysHidden.isEmpty {
-            return true
-        }
-        return !layoutStore.loadPendingRelocations().isEmpty
+        return StartupLayoutRestorePolicy.shouldRestore(
+            savedOrder: order,
+            pendingRelocations: layoutStore.loadPendingRelocations()
+        )
     }
 
     /// Single entry point for every layout apply (panel auto-apply, panel

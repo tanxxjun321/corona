@@ -272,6 +272,12 @@ final class LayoutApplicationController {
                 return .failed("directMenuBarMoveUnavailable")
             }
 
+            // Record the in-progress relocation before the first physical
+            // move so an interrupted apply (quit/crash) can be resumed by
+            // startup recovery (#19). Cleared on success below; a failure
+            // leaves the record for the next launch.
+            recordPendingRelocation(for: resolvedMove, cache: cache)
+
             var lastError: Error?
             for attempt in 0..<Self.maxMoveVerificationAttempts {
                 do {
@@ -298,6 +304,7 @@ final class LayoutApplicationController {
                         boundary: boundary
                     )
                     if destinationSatisfied && targetSectionSatisfied {
+                        clearPendingRelocation(for: resolvedMove.plannedMove.itemUID)
                         logger.log(.moveFinished(uid: resolvedMove.plannedMove.itemUID, success: true))
                         CoronaDebugLog.log("layout.move success uid=\(resolvedMove.plannedMove.itemUID)")
                         return .moved(resolvedMove.plannedMove.itemUID)
@@ -351,6 +358,29 @@ final class LayoutApplicationController {
         default:
             return false
         }
+    }
+
+    /// Writes the pending-relocation record for a move that is about to run.
+    /// The target section comes from the planned target: an explicit section
+    /// boundary, or the section of the anchor item for positional targets.
+    private func recordPendingRelocation(for move: ResolvedLayoutMove, cache: ItemCache) {
+        let targetSection: MenuBarSection?
+        switch move.plannedMove.target {
+        case .sectionBoundary(let section):
+            targetSection = section
+        case .leftOfUID(let anchor), .rightOfUID(let anchor):
+            targetSection = cache.section(containing: anchor)
+        }
+        guard let targetSection else { return }
+        let relocation = PendingRelocation.section(targetSection)
+        layoutStore.savePendingRelocation(relocation, for: move.plannedMove.itemUID)
+        logger.log(.pendingRelocationChanged(uid: move.plannedMove.itemUID, value: relocation))
+        CoronaDebugLog.log("layout.pendingRelocation recorded uid=\(move.plannedMove.itemUID) section=\(targetSection.rawValue)")
+    }
+
+    private func clearPendingRelocation(for uid: String) {
+        layoutStore.savePendingRelocation(nil, for: uid)
+        logger.log(.pendingRelocationChanged(uid: uid, value: nil))
     }
 
     private func targetSectionIsSatisfied(
@@ -443,20 +473,26 @@ final class LayoutApplicationController {
                         return
                     }
                     if currentOrder[relocation.targetSection].contains(uid) {
-                        layoutStore.savePendingRelocation(nil, for: uid)
+                        clearPendingRelocation(for: uid)
                         return
                     }
                     result[uid] = relocation
                 }
 
-                guard let entry = pending.first else {
+                // Deterministic order: Dictionary iteration order is
+                // unspecified, so recovery resumes relocations sorted by uid.
+                guard let uid = PendingRelocationRecovery.sortedUIDs(pending).first,
+                      let relocation = pending[uid] else {
                     return moveCount > 0 ? .applied(moveCount) : .satisfied
                 }
 
-                let desiredOrder = pendingRecoveryOrder(
-                    uid: entry.key,
-                    targetSection: entry.value.targetSection,
-                    currentOrder: currentOrder
+                // Move the item back to its saved position within the target
+                // section, not to the section's head.
+                let desiredOrder = PendingRelocationRecovery.recoveryOrder(
+                    uid: uid,
+                    targetSection: relocation.targetSection,
+                    currentOrder: currentOrder,
+                    savedOrder: layoutStore.loadSavedSectionOrder()
                 )
                 let step = planner.nextStep(
                     cache: cache,
@@ -470,8 +506,8 @@ final class LayoutApplicationController {
                     moveCount += 1
                     continue
                 case .satisfied:
-                    layoutStore.savePendingRelocation(nil, for: entry.key)
-                    pending.removeValue(forKey: entry.key)
+                    clearPendingRelocation(for: uid)
+                    pending.removeValue(forKey: uid)
                     continue
                 case .waitingForItem, .waitingForDestination, .missingBoundary, .failed:
                     return result
@@ -484,19 +520,6 @@ final class LayoutApplicationController {
         }
 
         return .failed("maxStepsExceeded")
-    }
-
-    private func pendingRecoveryOrder(
-        uid: String,
-        targetSection: MenuBarSection,
-        currentOrder: SectionOrder
-    ) -> SectionOrder {
-        var order = currentOrder
-        for section in MenuBarSection.allCases {
-            order[section].removeAll { $0 == uid }
-        }
-        order[targetSection].insert(uid, at: 0)
-        return order
     }
 
     private func layoutPreference() -> LayoutPreference {
