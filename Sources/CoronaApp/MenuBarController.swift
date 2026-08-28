@@ -37,6 +37,14 @@ final class MenuBarController {
     /// Set when an apply session exhausted its retries; drives the status
     /// item warning and the panel error until the next successful apply.
     private var persistentApplyFailure: LayoutApplicationResult?
+    /// Reconciliation (#21): the pure decision state machine (cooldown +
+    /// debounce), the polling task that feeds it read-only snapshots, and
+    /// the task running the reconciliation-triggered apply session. The tick
+    /// task and the apply task are deliberately separate so polling keeps
+    /// its cadence while an apply (with backoff retries) is in flight.
+    private var reconciliationController = LayoutReconciliationController()
+    private var reconciliationTickTask: Task<Void, Never>?
+    private var reconciliationApplyTask: Task<Void, Never>?
 
     private enum BoundaryStabilityTiming {
         static let pollIntervalNanoseconds: UInt64 = 40_000_000
@@ -49,6 +57,11 @@ final class MenuBarController {
         static let pollIntervalNanoseconds: UInt64 = 100_000_000
         static let requiredStableSamples = 4
         static let maxPolls = 18
+    }
+
+    private enum ReconciliationTiming {
+        static let panelClosedIntervalNanoseconds: UInt64 = 5_000_000_000
+        static let panelOpenIntervalNanoseconds: UInt64 = 1_000_000_000
     }
 
     init(
@@ -79,6 +92,7 @@ final class MenuBarController {
         startHiddenItemsHoverBar()
         rebuildMenu()
         scheduleStartupLayoutRestoreIfNeeded()
+        startLayoutReconciliation()
         showPermissionsOnFirstLaunchIfNeeded()
         showMainPanelOnLaunchIfReady()
     }
@@ -87,6 +101,8 @@ final class MenuBarController {
         autoRehideTask?.cancel()
         startupLayoutRestoreTask?.cancel()
         applySessionTask?.cancel()
+        reconciliationTickTask?.cancel()
+        reconciliationApplyTask?.cancel()
         DistributedNotificationCenter.default().removeObserver(self)
     }
 
@@ -498,6 +514,14 @@ final class MenuBarController {
             break
         }
 
+        // Reconciliation (#21): every apply session — manual Organize, panel
+        // single move, startup restore, or reconciliation-triggered — marks
+        // its own apply, so the polling loop never mistakes Corona's own
+        // physical changes for external deviation. The coalesce path above
+        // returns early and needs no marking: the in-flight session it
+        // merges into is already marked.
+        reconciliationController.ownApplyStarted()
+
         let task = Task { @MainActor [weak self] () -> LayoutApplicationResult in
             guard let self else { return .failed("Controller unavailable") }
             return await self.runApplySession(
@@ -507,6 +531,7 @@ final class MenuBarController {
         }
         applySessionTask = task
         let result = await task.value
+        reconciliationController.ownApplyFinished(at: ProcessInfo.processInfo.systemUptime)
         // A superseding request may already have installed a newer session.
         if applySessionTask == task {
             applySessionTask = nil
@@ -777,6 +802,106 @@ final class MenuBarController {
         } catch {
             CoronaDebugLog.log("layout.visibleGuard failed error=\(String(describing: error))")
             return false
+        }
+    }
+
+    // MARK: - Layout reconciliation (#21)
+
+    /// Starts the low-frequency reconciliation poll: ~5s while the panel is
+    /// closed, ~1s while it is open (mirroring the panel's live-refresh
+    /// cadence). Each tick takes a read-only snapshot — which never expands
+    /// or collapses the hidden sections and, via `MenuBarCacheController`
+    /// → `SnapshotPollingGate`, waits out any in-flight event injection —
+    /// and feeds it to the pure state machine.
+    private func startLayoutReconciliation() {
+        reconciliationTickTask?.cancel()
+        reconciliationTickTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let interval = self.mainPanelWindowController?.window?.isVisible == true
+                    ? ReconciliationTiming.panelOpenIntervalNanoseconds
+                    : ReconciliationTiming.panelClosedIntervalNanoseconds
+                try? await Task.sleep(nanoseconds: interval)
+                guard !Task.isCancelled else { return }
+                await self.runReconciliationTick()
+            }
+        }
+    }
+
+    private func runReconciliationTick() async {
+        guard permissionChecker.snapshot().canRunCoreFeatures else { return }
+        // An in-flight apply session (manual, startup, or reconciliation-
+        // triggered) owns the bar; the post-apply cooldown covers the
+        // settling window, so ticks during a session add no information.
+        guard applySessionTask == nil else { return }
+
+        let savedOrder = layoutStore.loadSavedSectionOrder()
+            .removingCoronaSelfItems()
+            .removingLegacyAXGeneratedItems()
+        guard !savedOrder.isEmpty else { return }
+
+        let now = ProcessInfo.processInfo.systemUptime
+        let cache: ItemCache
+        do {
+            cache = try await currentMenuBarCacheWithoutChangingVisibility()
+        } catch {
+            CoronaDebugLog.log("main.reconcile snapshotFailed error=\(String(describing: error))")
+            return
+        }
+        // The snapshot awaited the polling gate; an apply session may have
+        // started (and finished) while it was in flight. Re-check so a tick
+        // never measures against a session-owned bar.
+        guard applySessionTask == nil else { return }
+
+        // While the hidden sections are collapsed, the read-only snapshot
+        // degrades to the physically-visible classification (every
+        // offscreen item lands in `hidden`, `alwaysHidden` is empty), so the
+        // strict report would flag saved always-hidden items as false
+        // deviations. Use the relaxed comparison in that mode: visible
+        // membership + order checked strictly, hidden ∪ alwaysHidden checked
+        // as one merged section (#21, degraded-mode relaxation).
+        let sectionsCollapsed = sectionController.hiddenVisibility != .shown
+            || (settings.enableAlwaysHiddenSection && sectionController.alwaysHiddenVisibility != .shown)
+        let isOrderManageable: (MenuBarItem) -> Bool = { item in
+            item.isMovable
+                && item.canBeHidden
+                && !Self.isCoronaSelfIdentifier(item.tag.stableIdentifier)
+        }
+        let evaluator = LayoutSatisfactionEvaluator()
+        let report = sectionsCollapsed
+            ? evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: isOrderManageable)
+            : evaluator.report(cache: cache, savedOrder: savedOrder, isOrderManageable: isOrderManageable)
+
+        let wasDeviating = reconciliationController.deviationSince != nil
+        let inCooldown = reconciliationController.isInCooldown(at: now)
+        let decision = reconciliationController.tick(at: now, report: report)
+
+        if report.isSatisfied {
+            CoronaDebugLog.verbose("main.reconcile satisfied collapsed=\(sectionsCollapsed)")
+        } else {
+            let summary = "collapsed=\(sectionsCollapsed) sectionMismatches=\(report.sectionMismatches.map(\.uid)) orderMismatches=\(report.orderMismatches.map { "\($0.section.rawValue):expected=\($0.expectedUIDs),actual=\($0.actualUIDs)" })"
+            if inCooldown {
+                CoronaDebugLog.log("main.reconcile suppressedByCooldown \(summary)")
+            } else if !wasDeviating {
+                CoronaDebugLog.log("main.reconcile deviationDetected \(summary)")
+            } else {
+                CoronaDebugLog.verbose("main.reconcile debouncing \(summary)")
+            }
+        }
+
+        guard decision == .requestApply else { return }
+        guard reconciliationApplyTask == nil else { return }
+        CoronaDebugLog.log("main.reconcile requestApply")
+        // Runs through the shared apply session (#18): retries with backoff,
+        // coalescing with any manual apply, and the persistent-failure
+        // warning all come for free. Kept in its own task so the tick loop
+        // keeps its cadence while the session (including backoff sleeps)
+        // is in flight.
+        reconciliationApplyTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.requestApplySession(collapseAfterAttempt: true)
+            CoronaDebugLog.log("main.reconcile applyFinished result=\(result.statusTitle)")
+            self.reconciliationApplyTask = nil
         }
     }
 

@@ -157,6 +157,138 @@ final class LayoutSatisfactionTests: XCTestCase {
     }
 }
 
+/// Degraded-mode comparison used by the reconciliation loop when the hidden
+/// sections are collapsed: the read-only snapshot then classifies every
+/// offscreen item as `hidden` and leaves `alwaysHidden` empty, so the strict
+/// report would produce false deviations (#21).
+final class CollapsedSectionsLayoutSatisfactionTests: XCTestCase {
+    private let evaluator = LayoutSatisfactionEvaluator()
+    private let allManageable: (MenuBarItem) -> Bool = { $0.isMovable && $0.canBeHidden }
+
+    func testAlwaysHiddenItemClassifiedAsHiddenIsNotAFalseDeviation() {
+        let a = makeItem(windowID: 1, title: "A")
+        // Collapsed read-only snapshot: the saved always-hidden item is
+        // offscreen and lands in `hidden`; `alwaysHidden` is empty.
+        let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [a], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(alwaysHidden: ["app:A"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertTrue(report.isSatisfied)
+    }
+
+    func testOrderInsideCollapsedSectionsIsNotChecked() {
+        let a = makeItem(windowID: 1, title: "A")
+        let b = makeItem(windowID: 2, title: "B")
+        let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [b, a], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(hidden: ["app:A", "app:B"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertTrue(report.isSatisfied)
+    }
+
+    func testHiddenAlwaysHiddenSplitIsNotChecked() {
+        let a = makeItem(windowID: 1, title: "A")
+        let b = makeItem(windowID: 2, title: "B")
+        let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [a, b], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(hidden: ["app:A"], alwaysHidden: ["app:B"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertTrue(report.isSatisfied)
+    }
+
+    func testSavedHiddenItemOnScreenIsADeviation() {
+        let a = makeItem(windowID: 1, title: "A")
+        let cache = ItemCache(displayID: nil, visibleItems: [a], hiddenItems: [], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(hidden: ["app:A"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertFalse(report.isSatisfied)
+        XCTAssertEqual(
+            report.sectionMismatches,
+            [LayoutSectionMismatch(uid: "app:A", expectedSection: .hidden, actualSection: .visible)]
+        )
+    }
+
+    func testSavedAlwaysHiddenItemOnScreenIsADeviation() {
+        let a = makeItem(windowID: 1, title: "A")
+        let cache = ItemCache(displayID: nil, visibleItems: [a], hiddenItems: [], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(alwaysHidden: ["app:A"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertFalse(report.isSatisfied)
+        XCTAssertEqual(
+            report.sectionMismatches,
+            [LayoutSectionMismatch(uid: "app:A", expectedSection: .alwaysHidden, actualSection: .visible)]
+        )
+    }
+
+    func testSavedVisibleItemPhysicallyHiddenIsADeviation() {
+        let a = makeItem(windowID: 1, title: "A")
+        let cache = ItemCache(displayID: nil, visibleItems: [], hiddenItems: [a], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(visible: ["app:A"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertFalse(report.isSatisfied)
+        XCTAssertEqual(
+            report.sectionMismatches,
+            [LayoutSectionMismatch(uid: "app:A", expectedSection: .visible, actualSection: .hidden)]
+        )
+    }
+
+    func testVisibleOrderIsStillCheckedStrictly() {
+        let a = makeItem(windowID: 1, title: "A")
+        let b = makeItem(windowID: 2, title: "B")
+        let cache = ItemCache(displayID: nil, visibleItems: [b, a], hiddenItems: [], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(visible: ["app:A", "app:B"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertFalse(report.isSatisfied)
+        XCTAssertEqual(
+            report.orderMismatches,
+            [LayoutOrderMismatch(section: .visible, expectedUIDs: ["app:A", "app:B"], actualUIDs: ["app:B", "app:A"])]
+        )
+    }
+
+    func testSatisfiedWhenVisibleMatchesAndOffscreenItemsAreMerged() {
+        let a = makeItem(windowID: 1, title: "A")
+        let b = makeItem(windowID: 2, title: "B")
+        let c = makeItem(windowID: 3, title: "C")
+        let cache = ItemCache(displayID: nil, visibleItems: [a, b], hiddenItems: [c], alwaysHiddenItems: [])
+        let savedOrder = SectionOrder(visible: ["app:A", "app:B"], alwaysHidden: ["app:C"])
+
+        let report = evaluator.reportForCollapsedSections(cache: cache, savedOrder: savedOrder, isOrderManageable: allManageable)
+
+        XCTAssertTrue(report.isSatisfied)
+    }
+
+    private func makeItem(
+        windowID: UInt32,
+        namespace: String = "app",
+        title: String,
+        isMovable: Bool = true,
+        canBeHidden: Bool = true
+    ) -> MenuBarItem {
+        MenuBarItem(
+            tag: MenuBarItemTag(namespace: namespace, title: title, volatileWindowID: windowID),
+            windowID: windowID,
+            ownerPID: 1,
+            sourcePID: 1,
+            bounds: CGRect(x: Int(windowID) * 10, y: 0, width: 20, height: 22),
+            title: title,
+            isOnScreen: true,
+            isMovable: isMovable,
+            canBeHidden: canBeHidden
+        )
+    }
+}
+
 final class LayoutApplyStepBudgetTests: XCTestCase {
     func testFloorAppliesToSmallLayouts() {
         XCTAssertEqual(LayoutApplyStepBudget.stepLimit(manageableItemCount: 0), 20)

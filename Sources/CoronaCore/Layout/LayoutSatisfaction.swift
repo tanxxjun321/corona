@@ -121,6 +121,82 @@ public struct LayoutSatisfactionEvaluator {
             orderMismatches: orderMismatches
         )
     }
+
+    /// Degraded-mode comparison for read-only snapshots taken while the
+    /// hidden sections are collapsed (#21). Such snapshots fall back to the
+    /// physically-visible classification: every offscreen item lands in
+    /// `hidden` and `alwaysHidden` is always empty, so the strict `report`
+    /// would flag every saved always-hidden item as a false deviation.
+    ///
+    /// Relaxation:
+    /// - Visible section: membership *and* relative order are checked
+    ///   strictly — visible items are genuinely on screen, so this
+    ///   classification is reliable.
+    /// - Hidden ∪ alwaysHidden: only merged membership is checked. A saved
+    ///   hidden/always-hidden item found on screen (physically visible) is
+    ///   a deviation; the hidden/always-hidden split and the order inside
+    ///   the collapsed sections are not observable and are not checked.
+    public func reportForCollapsedSections(
+        cache: ItemCache,
+        savedOrder: SectionOrder,
+        isOrderManageable: (MenuBarItem) -> Bool
+    ) -> LayoutSatisfactionReport {
+        let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { ($0.tag.stableIdentifier, $0) })
+        var actualSectionByUID: [String: MenuBarSection] = [:]
+        for section in MenuBarSection.allCases {
+            for item in cache.items(in: section) {
+                actualSectionByUID[item.tag.stableIdentifier] = section
+            }
+        }
+
+        var expectedVisibleUIDs: Set<String> = []
+        var sectionMismatches: [LayoutSectionMismatch] = []
+        for section in MenuBarSection.allCases {
+            for uid in savedOrder[section] {
+                guard let item = itemByUID[uid], item.isMovable else { continue }
+                let targetSection: MenuBarSection = item.canBeHidden ? section : .visible
+                let actualSection = actualSectionByUID[uid]
+                if targetSection == .visible {
+                    expectedVisibleUIDs.insert(uid)
+                    if actualSection != .visible {
+                        sectionMismatches.append(LayoutSectionMismatch(
+                            uid: uid,
+                            expectedSection: .visible,
+                            actualSection: actualSection
+                        ))
+                    }
+                } else if actualSection == .visible {
+                    sectionMismatches.append(LayoutSectionMismatch(
+                        uid: uid,
+                        expectedSection: targetSection,
+                        actualSection: actualSection
+                    ))
+                }
+            }
+        }
+
+        var orderMismatches: [LayoutOrderMismatch] = []
+        let expectedVisibleOrder = savedOrder.visible.filter { uid in
+            guard expectedVisibleUIDs.contains(uid), let item = itemByUID[uid] else { return false }
+            return isOrderManageable(item)
+        }
+        let expectedSet = Set(expectedVisibleOrder)
+        let actualVisibleOrder = cache.visibleItems
+            .filter { expectedSet.contains($0.tag.stableIdentifier) && isOrderManageable($0) }
+            .map(\.tag.stableIdentifier)
+        if actualVisibleOrder != expectedVisibleOrder {
+            orderMismatches.append(LayoutOrderMismatch(
+                section: .visible,
+                expectedUIDs: expectedVisibleOrder,
+                actualUIDs: actualVisibleOrder
+            ))
+        }
+
+        return LayoutSatisfactionReport(
+            sectionMismatches: sectionMismatches,
+            orderMismatches: orderMismatches
+        )
+    }
 }
 
 private extension ItemCache {

@@ -43,6 +43,15 @@ Use this checklist for the first website-distributed release.
 - Bounce-back detection: arrange a drop the system rejects (e.g. move an item next to a non-reorderable system item, or use a third-party app that pins its item's position so the drop snaps back); the item returns to its origin, the log shows `executor.itemEvent bounceBack`, and the apply treats the move as failed (retry/warning path per the failed-apply entries above) instead of reporting success.
 - Stall the main thread during a move (e.g. pause the process in the debugger or open a modal dialog mid-move): the move times out, mouse suppression lifts automatically within ~3 seconds (watchdog), and subsequent moves still work.
 
+## Layout Reconciliation
+
+- Cmd-drag reversion: with the panel closed, cmd-drag a visible menu bar icon to a different position. Without any Corona interaction, the saved order is restored automatically within roughly the poll cadence (~5s panel closed, ~1s panel open) plus the 2.5s debounce; the log shows `main.reconcile deviationDetected` followed by `main.reconcile requestApply` and `main.reconcile applyFinished result=` success.
+- No self-trigger: run a manual Organize (or relaunch so the startup restore runs). Afterwards no `main.reconcile requestApply` appears for the apply the app just performed — any detection inside the 5s post-apply window is logged as `main.reconcile suppressedByCooldown`, and the bar is not re-applied.
+- No churn: cmd-drag an icon and keep dragging/moving icons continuously for ~10s. At most one reconciliation apply fires once the bar stays deviated for the full debounce; there is no apply/re-apply flicker loop while the bar keeps changing.
+- No concurrency with a manual apply: provoke a reconciliation apply (cmd-drag, wait for `main.reconcile requestApply`) and immediately drag an item in the panel — the log shows `main.applySession coalesced` or `main.applySession supersedeScheduledRetry`, never two applies running at once, and the newest layout wins.
+- No false deviation while collapsed: with always-hidden items in the saved layout and the panel closed for several minutes, the log shows no spurious `main.reconcile deviationDetected` (the collapsed-section read-only snapshot is compared with the relaxed hidden ∪ always-hidden merged check).
+- Reconciliation failure surfaces: launch with `CORONA_DISABLE_DIRECT_MENU_BAR_MOVE=1` and cmd-drag an icon — the reconciliation apply retries with backoff and ends in the same warning state (status item triangle + persistent panel error) as a failed manual apply.
+
 ## App Coverage
 
 - Test at least three third-party menu bar apps.
