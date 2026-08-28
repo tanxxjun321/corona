@@ -47,3 +47,21 @@ build: package app from xcode target
 ```
 
 Avoid vague messages such as `update`, `changes`, or `fix stuff`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues via the `gh` CLI; external PRs
+are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles use their default strings: `needs-triage`, `needs-info`,
+`ready-for-agent`, `ready-for-human`, `wontfix`. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` and `docs/adr/` at the repo root, created
+lazily by the domain-modeling skill. See `docs/agents/domain.md`.
