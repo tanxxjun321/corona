@@ -57,6 +57,8 @@
 		1A200000000000000000001C /* MenuBarItemCanonicalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */; };
 		1A200000000000000000001D /* LayoutApplyStepBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011D /* LayoutApplyStepBudget.swift */; };
 		1A200000000000000000001E /* LayoutSatisfaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011E /* LayoutSatisfaction.swift */; };
+		1A200000000000000000001F /* BoundaryStabilityEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */; };
+		1A2000000000000000000020 /* MenuBarStabilitySignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000120 /* MenuBarStabilitySignature.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -113,6 +115,8 @@
 		1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemCanonicalizer.swift; sourceTree = "<group>"; };
 		1A200000000000000000011D /* LayoutApplyStepBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplyStepBudget.swift; sourceTree = "<group>"; };
 		1A200000000000000000011E /* LayoutSatisfaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSatisfaction.swift; sourceTree = "<group>"; };
+		1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundaryStabilityEvaluator.swift; sourceTree = "<group>"; };
+		1A2000000000000000000120 /* MenuBarStabilitySignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarStabilitySignature.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -214,6 +218,7 @@
 		1A2000000000000000000305 /* Layout */ = {
 			isa = PBXGroup;
 			children = (
+				1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */,
 				1A200000000000000000010C /* LayoutApplicationPlanner.swift */,
 				1A200000000000000000011D /* LayoutApplyStepBudget.swift */,
 				1A200000000000000000010D /* LayoutDraft.swift */,
@@ -232,6 +237,7 @@
 				1A2000000000000000000111 /* ItemCache.swift */,
 				1A2000000000000000000112 /* MenuBarInteractionGeometry.swift */,
 				1A2000000000000000000113 /* MenuBarItem.swift */,
+				1A2000000000000000000120 /* MenuBarStabilitySignature.swift */,
 			);
 			path = MenuBar;
 			sourceTree = "<group>";
@@ -402,6 +408,8 @@
 				1A2000000000000000000018 /* PendingRelocation.swift in Sources */,
 				1A2000000000000000000019 /* UserDefaultsSettingsStore.swift in Sources */,
 				1A200000000000000000001A /* AppSettings.swift in Sources */,
+				1A200000000000000000001F /* BoundaryStabilityEvaluator.swift in Sources */,
+				1A2000000000000000000020 /* MenuBarStabilitySignature.swift in Sources */,
 				1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

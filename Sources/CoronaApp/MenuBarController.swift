@@ -30,56 +30,10 @@ final class MenuBarController {
     private var autoRehideTask: Task<Void, Never>?
     private var startupLayoutRestoreTask: Task<Void, Never>?
 
-    private struct StabilitySignature: Equatable {
-        var items: [Item]
-
-        struct Item: Equatable {
-            var uid: String
-            var x: Int
-            var y: Int
-            var width: Int
-            var height: Int
-
-            init(uid: String, frame: CGRect) {
-                self.uid = uid
-                x = Int(frame.minX.rounded())
-                y = Int(frame.minY.rounded())
-                width = Int(frame.width.rounded())
-                height = Int(frame.height.rounded())
-            }
-        }
-
-        init(cache: ItemCache, boundary: SectionBoundary?) {
-            let displayFrame = cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
-            let visibleItems = cache.allItems.filter { item in
-                item.isOnScreen && item.bounds.intersects(displayFrame)
-            }
-            let boundaryItems = Self.items(for: boundary)
-
-            items = (visibleItems.map(Self.item(for:)) + boundaryItems)
-                .sorted { lhs, rhs in
-                    if lhs.x != rhs.x {
-                        return lhs.x < rhs.x
-                    }
-                    if lhs.y != rhs.y {
-                        return lhs.y < rhs.y
-                    }
-                    return lhs.uid < rhs.uid
-                }
-        }
-
-        private static func item(for item: MenuBarItem) -> Item {
-            Item(uid: item.tag.stableIdentifier, frame: item.bounds)
-        }
-
-        private static func items(for boundary: SectionBoundary?) -> [Item] {
-            guard let boundary else { return [] }
-            var items = [Item(uid: "com.ltz.corona.control:hidden", frame: boundary.hiddenControlBounds)]
-            if let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds {
-                items.append(Item(uid: "com.ltz.corona.control:alwaysHidden", frame: alwaysHiddenControlBounds))
-            }
-            return items
-        }
+    private enum BoundaryStabilityTiming {
+        static let pollIntervalNanoseconds: UInt64 = 40_000_000
+        static let requiredStableSamples = 3
+        static let timeoutSeconds: TimeInterval = 2.5
     }
 
     private enum StabilityTiming {
@@ -376,6 +330,9 @@ final class MenuBarController {
         )
         let shouldExpandHidden = previousVisibility.hidden != .shown
         let shouldExpandAlwaysHidden = settings.enableAlwaysHiddenSection && previousVisibility.alwaysHidden != .shown
+        let boundaryReference = (shouldExpandHidden || shouldExpandAlwaysHidden)
+            ? currentBoundaryObservation().value
+            : nil
 
         if shouldExpandHidden {
             sectionController.setHiddenSectionVisible(true)
@@ -396,7 +353,15 @@ final class MenuBarController {
         }
 
         if shouldRestoreVisibility {
-            try? await Task.sleep(nanoseconds: 160_000_000)
+            // Read path degradation: on timeout fall back to the physically
+            // visible cache (same fallback as a missing boundary) instead of
+            // classifying with collapsed-state coordinates. Aborting the
+            // refresh entirely would leave the panel showing stale content.
+            guard await waitForBoundaryStability(reference: boundaryReference) else {
+                CoronaDebugLog.log("main.organizerCache boundaryStabilityTimeout fallback=physicalVisible")
+                let snapshot = try await cacheController.refresh()
+                return physicallyVisibleCache(from: snapshot)
+            }
         }
 
         let snapshot = try await cacheController.refresh()
@@ -483,19 +448,23 @@ final class MenuBarController {
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
 
-        sectionController.setHiddenSectionVisible(true)
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionVisible(true)
-        }
+        var result: LayoutApplicationResult
+        if await expandSectionsAndWaitForBoundaryStability() {
+            result = await ensureLayoutApplicationController().applySavedLayout()
 
-        try? await Task.sleep(nanoseconds: 180_000_000)
-        var result = await ensureLayoutApplicationController().applySavedLayout()
-
-        if result.isSuccessfulApply {
-            let layoutSatisfied = await savedLayoutIsActuallySatisfied()
-            if !layoutSatisfied {
-                result = .failed("savedLayoutNotRestored")
+            if result.isSuccessfulApply {
+                let layoutSatisfied = await savedLayoutIsActuallySatisfied()
+                if !layoutSatisfied {
+                    result = .failed("savedLayoutNotRestored")
+                }
             }
+        } else {
+            // Timeout path: abort instead of applying with collapsed-state
+            // coordinates. Apply has no retry yet (#18), so continuing with a
+            // stale boundary would misclassify every section and move items
+            // to the wrong targets.
+            CoronaDebugLog.log("main.applySavedLayout boundaryStabilityTimeout action=abort")
+            result = .failed("boundaryNotStable")
         }
 
         if result.isSuccessfulApply || collapseAfterAttempt {
@@ -514,19 +483,21 @@ final class MenuBarController {
         sanitizeSavedLayout()
         autoRehideTask?.cancel()
 
-        sectionController.setHiddenSectionVisible(true)
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionVisible(true)
-        }
+        var result: LayoutApplicationResult
+        if await expandSectionsAndWaitForBoundaryStability() {
+            result = await ensureLayoutApplicationController().applySingleMove(uid: uid, desiredOrder: desiredOrder)
 
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        var result = await ensureLayoutApplicationController().applySingleMove(uid: uid, desiredOrder: desiredOrder)
-
-        if result.isSuccessfulApply {
-            let layoutSatisfied = await savedLayoutIsActuallySatisfied()
-            if !layoutSatisfied {
-                result = .failed("savedLayoutNotRestored")
+            if result.isSuccessfulApply {
+                let layoutSatisfied = await savedLayoutIsActuallySatisfied()
+                if !layoutSatisfied {
+                    result = .failed("savedLayoutNotRestored")
+                }
             }
+        } else {
+            // Same timeout policy as applySavedLayoutWithVisibleBoundary:
+            // abort rather than move with collapsed-state coordinates.
+            CoronaDebugLog.log("main.applySingleMove boundaryStabilityTimeout action=abort uid=\(uid)")
+            result = .failed("boundaryNotStable")
         }
 
         if result.isSuccessfulApply {
@@ -545,13 +516,61 @@ final class MenuBarController {
         }
     }
 
+    private func currentBoundaryObservation() -> BoundaryObservation {
+        BoundaryObservation(
+            boundary: sectionController.currentBoundary(),
+            timestamp: ProcessInfo.processInfo.systemUptime
+        )
+    }
+
+    /// Expands the hidden sections and waits until macOS has finished
+    /// reflowing the menu bar before returning true. Returns false when the
+    /// boundary never settled within the timeout — the caller must then abort
+    /// (apply paths) or degrade (read paths) instead of using collapsed-state
+    /// coordinates.
+    private func expandSectionsAndWaitForBoundaryStability() async -> Bool {
+        let needsExpansion = sectionController.hiddenVisibility != .shown
+            || (settings.enableAlwaysHiddenSection && sectionController.alwaysHiddenVisibility != .shown)
+        let reference = needsExpansion ? currentBoundaryObservation().value : nil
+
+        sectionController.setHiddenSectionVisible(true)
+        if settings.enableAlwaysHiddenSection {
+            sectionController.setAlwaysHiddenSectionVisible(true)
+        }
+
+        return await waitForBoundaryStability(reference: reference)
+    }
+
+    private func waitForBoundaryStability(reference: BoundaryValue?) async -> Bool {
+        var evaluator = BoundaryStabilityEvaluator(
+            reference: reference,
+            requiredStableSamples: BoundaryStabilityTiming.requiredStableSamples,
+            timeout: BoundaryStabilityTiming.timeoutSeconds
+        )
+
+        while !Task.isCancelled {
+            let observation = currentBoundaryObservation()
+            switch evaluator.record(observation) {
+            case .stable:
+                CoronaDebugLog.verbose("main.boundaryStable hiddenMinX=\(observation.value?.hiddenControlMinX ?? -1) alwaysHiddenMinX=\(observation.value?.alwaysHiddenControlMinX ?? -1)")
+                return true
+            case .timeout:
+                CoronaDebugLog.log("main.boundaryStabilityTimeout lastHiddenMinX=\(observation.value?.hiddenControlMinX ?? -1) referenceHiddenMinX=\(reference?.hiddenControlMinX ?? -1)")
+                return false
+            case .pending:
+                try? await Task.sleep(nanoseconds: BoundaryStabilityTiming.pollIntervalNanoseconds)
+            }
+        }
+        return false
+    }
+
     private func collapseHiddenSectionsAfterLayoutAttempt() async {
         collapseHiddenSections()
         await waitForMenuBarLayoutToSettle()
     }
 
     private func waitForMenuBarLayoutToSettle() async {
-        var previousSignature: StabilitySignature?
+        var previousSignature: MenuBarStabilitySignature?
         var stableSampleCount = 0
 
         try? await Task.sleep(nanoseconds: StabilityTiming.initialDelayNanoseconds)
@@ -559,7 +578,11 @@ final class MenuBarController {
         for _ in 0..<StabilityTiming.maxPolls where !Task.isCancelled {
             do {
                 let cache = try await currentMenuBarCacheWithoutChangingVisibility()
-                let signature = StabilitySignature(cache: cache, boundary: sectionController.currentBoundary())
+                let signature = MenuBarStabilitySignature(
+                    cache: cache,
+                    boundary: sectionController.currentBoundary(),
+                    displayFrame: cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
+                )
                 if previousSignature == signature {
                     stableSampleCount += 1
                     if stableSampleCount >= StabilityTiming.requiredStableSamples {

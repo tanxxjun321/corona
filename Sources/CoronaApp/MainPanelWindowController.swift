@@ -163,60 +163,6 @@ enum MainPanelTab: Hashable {
     case settings
 }
 
-private struct MenuBarStabilitySignature: Equatable {
-    struct Item: Equatable {
-        var uid: String
-        var x: Int
-        var y: Int
-        var width: Int
-        var height: Int
-    }
-
-    var items: [Item]
-
-    init(cache: ItemCache, boundary: SectionBoundary?) {
-        let displayFrame = cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
-        let visibleItems = cache.allItems.filter { item in
-            item.isOnScreen && item.bounds.intersects(displayFrame)
-        }
-        let boundaryItems = Self.items(for: boundary)
-
-        items = (visibleItems.map(Self.item(for:)) + boundaryItems)
-            .sorted { lhs, rhs in
-                if lhs.x != rhs.x {
-                    return lhs.x < rhs.x
-                }
-                if lhs.y != rhs.y {
-                    return lhs.y < rhs.y
-                }
-                return lhs.uid < rhs.uid
-            }
-    }
-
-    private static func item(for item: MenuBarItem) -> Item {
-        Item(uid: item.tag.stableIdentifier, frame: item.bounds)
-    }
-
-    private static func items(for boundary: SectionBoundary?) -> [Item] {
-        guard let boundary else { return [] }
-        var items = [Item(uid: "com.ltz.corona.control:hidden", frame: boundary.hiddenControlBounds)]
-        if let alwaysHiddenControlBounds = boundary.alwaysHiddenControlBounds {
-            items.append(Item(uid: "com.ltz.corona.control:alwaysHidden", frame: alwaysHiddenControlBounds))
-        }
-        return items
-    }
-}
-
-private extension MenuBarStabilitySignature.Item {
-    init(uid: String, frame: CGRect) {
-        self.uid = uid
-        x = Int(frame.minX.rounded())
-        y = Int(frame.minY.rounded())
-        width = Int(frame.width.rounded())
-        height = Int(frame.height.rounded())
-    }
-}
-
 @MainActor
 final class MainPanelViewModel: ObservableObject {
     private enum Constants {
@@ -737,7 +683,11 @@ final class MainPanelViewModel: ObservableObject {
         for _ in 0..<Constants.menuStabilityMaxPolls where !Task.isCancelled {
             do {
                 let cache = try await currentCache(allowVisibilityChanges: false)
-                let signature = MenuBarStabilitySignature(cache: cache, boundary: boundaryProvider())
+                let signature = MenuBarStabilitySignature(
+                    cache: cache,
+                    boundary: boundaryProvider(),
+                    displayFrame: cache.displayID.map(CGDisplayBounds) ?? BuiltInMenuBarDisplay.target().frame
+                )
                 if previousSignature == signature {
                     stableSampleCount += 1
                     if stableSampleCount >= Constants.menuStabilityRequiredStableSamples {
