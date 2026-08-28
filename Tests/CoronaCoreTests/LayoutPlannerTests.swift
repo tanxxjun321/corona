@@ -73,6 +73,25 @@ final class LayoutPlannerTests: XCTestCase {
         XCTAssertEqual(order.alwaysHidden, [])
     }
 
+    func testMergedOrderRetainsSavedUIDsWhoseItemsAreAbsent() {
+        let cache = ItemCache(
+            displayID: nil,
+            visibleItems: [makeItem(windowID: 1, namespace: "app", title: "Running", sourcePID: 10)],
+            hiddenItems: [],
+            alwaysHiddenItems: []
+        )
+        let preference = LayoutPreference(
+            savedOrder: SectionOrder(visible: ["app:Quit", "app:Running"]),
+            newItemsSection: .visible,
+            newItemsPlacement: .append,
+            alwaysHiddenEnabled: false
+        )
+
+        let order = LayoutPlanner().mergedOrder(cache: cache, preference: preference)
+
+        XCTAssertEqual(order.visible, ["app:Quit", "app:Running"])
+    }
+
     func testMergedOrderToleratesDuplicateStableIdentifiers() {
         let first = makeItem(windowID: 1, namespace: "app", title: "Dup", sourcePID: 10)
         let second = makeItem(windowID: 2, namespace: "app", title: "Dup", sourcePID: 10)

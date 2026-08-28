@@ -43,15 +43,11 @@ public struct LayoutPlanner {
         if !duplicateUIDs.isEmpty {
             logger.log(.warning("LayoutPlanner dropped items with duplicate stable identifiers (first wins): \(duplicateUIDs.joined(separator: ", "))"))
         }
-        let currentUIDs = Set(currentByUID.keys)
         let knownUIDs = Set(order.visible + order.hidden + order.alwaysHidden)
 
-        for section in MenuBarSection.allCases {
-            order[section] = order[section].filter { uid in
-                currentUIDs.contains(uid) || knownUIDs.contains(uid)
-            }
-        }
-
+        // UIDs whose items are not currently present are kept: saved order
+        // remembers each item's position so it returns to its place when its
+        // app relaunches.
         let targetForNewItems = normalizedNewItemsSection(preference)
         var seenNewUIDs = Set<String>()
         let newUIDs = cache.allItems
