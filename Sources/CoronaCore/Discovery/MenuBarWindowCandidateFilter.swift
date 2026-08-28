@@ -58,16 +58,13 @@ public struct MenuBarWindowCandidateFilter: Sendable {
     private func isGenericControlCenterContainer(_ candidate: MenuBarWindowCandidate) -> Bool {
         guard candidate.title?.isEmpty ?? true else { return false }
         guard candidate.bounds.height < 30 else { return false }
-        let ownerName = candidate.ownerName ?? ""
-        return ownerName == "Control Center" || ownerName == "控制中心"
+        // Match by bundle identifier: the owner name is localized per system
+        // language, the bundle identifier is not.
+        return bundleIdentifierForPID(candidate.ownerPID) == "com.apple.controlcenter"
     }
 
     private func isLeftEdgeControlCenterArtifact(_ candidate: MenuBarWindowCandidate, displayFrames: [CGRect]) -> Bool {
-        let ownerName = candidate.ownerName ?? ""
-        let bundleIdentifier = bundleIdentifierForPID(candidate.ownerPID)
-        let isControlCenter = ownerName == "Control Center" ||
-            ownerName == "控制中心" ||
-            bundleIdentifier == "com.apple.controlcenter"
+        let isControlCenter = bundleIdentifierForPID(candidate.ownerPID) == "com.apple.controlcenter"
         guard isControlCenter else { return false }
 
         return displayFrames.contains { frame in
@@ -79,11 +76,7 @@ public struct MenuBarWindowCandidateFilter: Sendable {
     }
 
     private func isControlCenterSubviewArtifact(_ candidate: MenuBarWindowCandidate) -> Bool {
-        let ownerName = candidate.ownerName ?? ""
-        let bundleIdentifier = bundleIdentifierForPID(candidate.ownerPID)
-        let isControlCenter = ownerName == "Control Center" ||
-            ownerName == "控制中心" ||
-            bundleIdentifier == "com.apple.controlcenter"
+        let isControlCenter = bundleIdentifierForPID(candidate.ownerPID) == "com.apple.controlcenter"
         guard isControlCenter else { return false }
 
         return candidate.bounds.height < 30

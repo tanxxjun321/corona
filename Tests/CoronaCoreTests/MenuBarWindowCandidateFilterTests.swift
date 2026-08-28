@@ -77,7 +77,7 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
     }
 
     func testRejectsGenericControlCenterContainer() {
-        let filter = makeFilter()
+        let filter = makeFilter(bundleIdentifier: "com.apple.controlcenter")
         let candidate = MenuBarWindowCandidate(
             ownerPID: 42,
             ownerName: "控制中心",
@@ -90,7 +90,7 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
     }
 
     func testAcceptsNamedControlCenterModule() {
-        let filter = makeFilter()
+        let filter = makeFilter(bundleIdentifier: "com.apple.controlcenter")
         let candidate = MenuBarWindowCandidate(
             ownerPID: 42,
             ownerName: "控制中心",
@@ -102,8 +102,23 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
         XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
     }
 
-    func testRejectsControlCenterSubviewArtifact() {
+    func testAcceptsEnglishNamedWindowFromNonControlCenterProcess() {
+        // Owner names are localized and must not drive recognition: a window
+        // titled "Control Center" from any other process is a valid candidate.
         let filter = makeFilter()
+        let candidate = MenuBarWindowCandidate(
+            ownerPID: 42,
+            ownerName: "Control Center",
+            title: nil,
+            bounds: CGRect(x: 840, y: 0, width: 33, height: 24),
+            layer: 25
+        )
+
+        XCTAssertTrue(filter.isMenuBarItemCandidate(candidate, displayFrames: [CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+    }
+
+    func testRejectsControlCenterSubviewArtifact() {
+        let filter = makeFilter(bundleIdentifier: "com.apple.controlcenter")
         let candidate = MenuBarWindowCandidate(
             ownerPID: 42,
             ownerName: "控制中心",
@@ -116,7 +131,7 @@ final class MenuBarWindowCandidateFilterTests: XCTestCase {
     }
 
     func testRejectsLeftEdgeControlCenterArtifact() {
-        let filter = makeFilter()
+        let filter = makeFilter(bundleIdentifier: "com.apple.controlcenter")
         let candidate = MenuBarWindowCandidate(
             ownerPID: 42,
             ownerName: "控制中心",
