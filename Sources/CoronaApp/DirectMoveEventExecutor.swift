@@ -30,7 +30,17 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         }
 
         await Self.gate.acquire()
+        let itemUID = item.tag.stableIdentifier
+        defer {
+            Task {
+                await Self.gate.release()
+                CoronaDebugLog.log("executor.itemEvent gate released uid=\(itemUID)")
+            }
+        }
         await SnapshotPollingGate.shared.acquireSuspension()
+        defer {
+            Task { await SnapshotPollingGate.shared.releaseSuspension() }
+        }
         CoronaDebugLog.log("executor.itemEvent gate acquired uid=\(item.tag.stableIdentifier)")
 
         if !skipInputPause {
@@ -46,9 +56,6 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
             maxAttempts: maxAttempts
         )
         await cursorTransaction.finish()
-        await SnapshotPollingGate.shared.releaseSuspension()
-        await Self.gate.release()
-        CoronaDebugLog.log("executor.itemEvent gate released uid=\(item.tag.stableIdentifier)")
         try result.get()
     }
 
@@ -325,10 +332,16 @@ private struct MenuBarMoveCursorTransaction {
 }
 
 private final class MouseEventSuppressionSession {
+    /// Upper bound for a normal move including retries (~1s); if the session is
+    /// still alive past this, something wedged and the watchdog force-stops it.
+    private static let watchdogInterval: TimeInterval = 3
+
     private let syntheticMarker: Int64
+    private let lock = NSLock()
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var retainedSelf: Unmanaged<MouseEventSuppressionSession>?
+    private var watchdogWorkItem: DispatchWorkItem?
 
     init(syntheticMarker: Int64) {
         self.syntheticMarker = syntheticMarker
@@ -362,10 +375,20 @@ private final class MouseEventSuppressionSession {
         self.source = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        let watchdog = DispatchWorkItem { [weak self] in
+            self?.watchdogFired()
+        }
+        watchdogWorkItem = watchdog
+        DispatchQueue.global().asyncAfter(deadline: .now() + Self.watchdogInterval, execute: watchdog)
         CoronaDebugLog.verbose("executor.itemEvent suppressMouseStarted")
     }
 
+    /// Thread-safe and idempotent: may be called from the watchdog's global
+    /// queue while the main RunLoop is stalled.
     func stop() {
+        lock.lock()
+        watchdogWorkItem?.cancel()
+        watchdogWorkItem = nil
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -376,15 +399,27 @@ private final class MouseEventSuppressionSession {
         source = nil
         let retained = retainedSelf
         retainedSelf = nil
+        lock.unlock()
         retained?.release()
         CoronaDebugLog.verbose("executor.itemEvent suppressMouseStopped")
     }
 
+    private func watchdogFired() {
+        lock.lock()
+        let isActive = tap != nil
+        lock.unlock()
+        guard isActive else { return }
+        CoronaDebugLog.log("executor.itemEvent suppressMouseWatchdogFired")
+        stop()
+    }
+
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
+            lock.unlock()
             return Unmanaged.passUnretained(event)
         }
 
@@ -485,6 +520,7 @@ private final class MenuBarEventPostSession {
     private let event: CGEvent
     private let location: MenuBarEventLocation
     private let timeoutNanoseconds: UInt64
+    private let lock = NSLock()
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var completion: ((Result<Void, Error>) -> Void)?
@@ -513,6 +549,7 @@ private final class MenuBarEventPostSession {
             return
         }
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CGEvent.tapEnable(tap: tap, enable: false)
             finish(.failure(MoveExecutorError.destinationUnavailable))
             return
         }
@@ -520,19 +557,23 @@ private final class MenuBarEventPostSession {
         self.source = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        // The timeout runs on a global queue so a stalled main RunLoop cannot
+        // prevent timeout recovery; finish() is lock-guarded for that reason.
         let workItem = DispatchWorkItem { [weak self] in
             self?.finish(.failure(MoveExecutorError.timedOut))
         }
         timeoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds)), execute: workItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds)), execute: workItem)
         location.post(event)
     }
 
     private func handle(type: CGEventType, event received: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
+            lock.unlock()
             return Unmanaged.passUnretained(received)
         }
         guard received.matchesMenuBarEvent(event) else {
@@ -543,6 +584,7 @@ private final class MenuBarEventPostSession {
     }
 
     private func finish(_ result: Result<Void, Error>) {
+        lock.lock()
         timeoutWorkItem?.cancel()
         timeoutWorkItem = nil
         if let tap {
@@ -553,10 +595,14 @@ private final class MenuBarEventPostSession {
         }
         tap = nil
         source = nil
-        guard let completion else { return }
+        guard let completion else {
+            lock.unlock()
+            return
+        }
         self.completion = nil
         let retained = retainedSelf
         retainedSelf = nil
+        lock.unlock()
         completion(result)
         retained?.release()
     }
@@ -580,6 +626,7 @@ private final class MenuBarEventScrombleSession {
     private let firstLocation: MenuBarEventLocation
     private let secondLocation: MenuBarEventLocation
     private let timeoutNanoseconds: UInt64
+    private let lock = NSLock()
     private var firstTap: CFMachPort?
     private var secondTap: CFMachPort?
     private var firstSource: CFRunLoopSource?
@@ -606,24 +653,36 @@ private final class MenuBarEventScrombleSession {
         self.completion = completion
         retainedSelf = Unmanaged.passRetained(self)
         let refcon = UnsafeMutableRawPointer(retainedSelf!.toOpaque())
-        guard
-            let firstTap = firstLocation.createTap(
-                options: .defaultTap,
-                place: .tailAppendEventTap,
-                eventsOfInterest: Self.eventMask(for: [nullEvent.type]),
-                callback: Self.firstCallback,
-                userInfo: refcon
-            ),
-            let secondTap = secondLocation.createTap(
-                options: .listenOnly,
-                place: .tailAppendEventTap,
-                eventsOfInterest: Self.eventMask(for: [event.type]),
-                callback: Self.secondCallback,
-                userInfo: refcon
-            ),
-            let firstSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, firstTap, 0),
-            let secondSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, secondTap, 0)
-        else {
+        guard let firstTap = firstLocation.createTap(
+            options: .defaultTap,
+            place: .tailAppendEventTap,
+            eventsOfInterest: Self.eventMask(for: [nullEvent.type]),
+            callback: Self.firstCallback,
+            userInfo: refcon
+        ) else {
+            finish(.failure(MoveExecutorError.destinationUnavailable))
+            return
+        }
+        guard let secondTap = secondLocation.createTap(
+            options: .listenOnly,
+            place: .tailAppendEventTap,
+            eventsOfInterest: Self.eventMask(for: [event.type]),
+            callback: Self.secondCallback,
+            userInfo: refcon
+        ) else {
+            CGEvent.tapEnable(tap: firstTap, enable: false)
+            finish(.failure(MoveExecutorError.destinationUnavailable))
+            return
+        }
+        guard let firstSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, firstTap, 0) else {
+            CGEvent.tapEnable(tap: firstTap, enable: false)
+            CGEvent.tapEnable(tap: secondTap, enable: false)
+            finish(.failure(MoveExecutorError.destinationUnavailable))
+            return
+        }
+        guard let secondSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, secondTap, 0) else {
+            CGEvent.tapEnable(tap: firstTap, enable: false)
+            CGEvent.tapEnable(tap: secondTap, enable: false)
             finish(.failure(MoveExecutorError.destinationUnavailable))
             return
         }
@@ -635,50 +694,61 @@ private final class MenuBarEventScrombleSession {
         CFRunLoopAddSource(CFRunLoopGetMain(), secondSource, .commonModes)
         CGEvent.tapEnable(tap: firstTap, enable: true)
         CGEvent.tapEnable(tap: secondTap, enable: true)
+        // The timeout runs on a global queue so a stalled main RunLoop cannot
+        // prevent timeout recovery; finish() is lock-guarded for that reason.
         let workItem = DispatchWorkItem { [weak self] in
             self?.finish(.failure(MoveExecutorError.timedOut))
         }
         timeoutWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds)), execute: workItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + .nanoseconds(Int(timeoutNanoseconds)), execute: workItem)
         firstLocation.post(nullEvent)
     }
 
     private func handleFirst(type: CGEventType, event received: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
             if let firstTap {
                 CGEvent.tapEnable(tap: firstTap, enable: true)
             }
+            lock.unlock()
             return nil
         }
         guard received.getIntegerValueField(.eventSourceUserData) == nullEvent.getIntegerValueField(.eventSourceUserData) else {
             return nil
         }
+        lock.lock()
         if let firstTap {
             CGEvent.tapEnable(tap: firstTap, enable: false)
         }
+        lock.unlock()
         secondLocation.post(event)
         return nil
     }
 
     private func handleSecond(type: CGEventType, event received: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            lock.lock()
             if let secondTap {
                 CGEvent.tapEnable(tap: secondTap, enable: true)
             }
+            lock.unlock()
             return Unmanaged.passUnretained(received)
         }
         guard received.matchesMenuBarEvent(event) else {
             return Unmanaged.passUnretained(received)
         }
+        lock.lock()
         if let secondTap {
             CGEvent.tapEnable(tap: secondTap, enable: false)
         }
+        lock.unlock()
         firstLocation.post(event)
         finish(.success(()))
         return Unmanaged.passUnretained(received)
     }
 
     private func finish(_ result: Result<Void, Error>) {
+        lock.lock()
         timeoutWorkItem?.cancel()
         timeoutWorkItem = nil
         if let firstTap {
@@ -697,10 +767,14 @@ private final class MenuBarEventScrombleSession {
         secondTap = nil
         firstSource = nil
         secondSource = nil
-        guard let completion else { return }
+        guard let completion else {
+            lock.unlock()
+            return
+        }
         self.completion = nil
         let retained = retainedSelf
         retainedSelf = nil
+        lock.unlock()
         completion(result)
         retained?.release()
     }

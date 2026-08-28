@@ -30,6 +30,8 @@ Use this checklist for the first website-distributed release.
 - Timer auto re-hide returns the revealed item to its original hidden section.
 - Relaunch with pending relocation restores pending items before applying saved layout.
 - A failed move does not leave the mouse button or drag state stuck.
+- Normal move: mouse is suppressed only during the move (~1s) and is fully responsive immediately after.
+- Stall the main thread during a move (e.g. pause the process in the debugger or open a modal dialog mid-move): the move times out, mouse suppression lifts automatically within ~3 seconds (watchdog), and subsequent moves still work.
 
 ## App Coverage
 
