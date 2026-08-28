@@ -36,6 +36,9 @@ public enum MoveExecutorError: Error, Equatable, Sendable {
     case sourceProcessUnavailable(String)
     case destinationUnavailable
     case timedOut
+    /// The system rejected the drop: after mouseUp the item settled back at
+    /// its pre-drag frame (bounce-back).
+    case moveRejected
     case finalPositionMismatch
 }
 

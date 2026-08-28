@@ -5,6 +5,10 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
         static let syntheticEventMarker: Int64 = 0x434f524f4e41
         static let eventTimeoutNanoseconds: UInt64 = 80_000_000
         static let frameCheckTimeoutNanoseconds: UInt64 = 120_000_000
+        /// Post-mouseUp settle wait. Sized so a full move (mouse-still wait,
+        /// two event round-trips, both frame waits) stays well under the 3s
+        /// mouse-suppression watchdog even with retries.
+        static let frameSettleTimeoutNanoseconds: UInt64 = 600_000_000
         static let mouseStillSampleDelayNanoseconds: UInt64 = 45_000_000
         static let mouseStillMaxWaitNanoseconds: UInt64 = 450_000_000
         static let cursorRestoreDelayNanoseconds: UInt64 = 20_000_000
@@ -128,6 +132,10 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
                 waitingForFrameChangeOf: item,
                 initialBounds: initialBounds
             )
+            // Baseline for the post-mouseUp wait: the mid-drag frame (item
+            // held at the cursor). The pre-drag frame would be satisfied
+            // immediately because mouseDown already moved the item.
+            let draggingBounds = currentBounds(for: item)
             let targetBounds = currentBounds(for: targetItem)
             let endPoint = destinationPoint(for: destination, targetBounds: targetBounds)
             guard let mouseUp = CGEvent.menuBarItemEvent(
@@ -143,9 +151,12 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
             try await scromble(
                 mouseUp,
                 from: .pid(pid),
-                to: .sessionEventTap,
-                waitingForFrameChangeOf: item,
-                initialBounds: initialBounds
+                to: .sessionEventTap
+            )
+            try await waitForSettledFrame(
+                of: item,
+                initialBounds: initialBounds,
+                draggingBounds: draggingBounds
             )
         } catch {
             let fallbackBounds = currentBounds(for: item)
@@ -277,6 +288,41 @@ struct MenuBarItemEventExecutor: MoveEventExecutor {
                current != initialBounds {
                 CoronaDebugLog.verbose("executor.itemEvent frameChanged uid=\(item.tag.stableIdentifier) frame=\(current.debugDescription)")
                 return
+            }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        throw MoveExecutorError.timedOut
+    }
+
+    /// After mouseUp the system animates the item to its final position: the
+    /// drop target on success, or back to the pre-drag origin when the drop is
+    /// rejected (bounce-back). Wait until the frame stops changing (two equal
+    /// consecutive reads), then classify the settled frame: settling back at
+    /// the pre-drag frame means the system rejected the drop. The frame must
+    /// first move away from the mid-drag frame so we never classify before the
+    /// drop animation has started.
+    private func waitForSettledFrame(
+        of item: MenuBarItem,
+        initialBounds: CGRect,
+        draggingBounds: CGRect
+    ) async throws {
+        let deadline = DispatchTime.now().uptimeNanoseconds + Constants.frameSettleTimeoutNanoseconds
+        var previous: CGRect?
+        var dropStarted = false
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if let current = MenuBarWindowFrameReader.frame(for: item.windowID) {
+                if current != draggingBounds {
+                    dropStarted = true
+                }
+                if dropStarted, current == previous {
+                    if current == initialBounds {
+                        CoronaDebugLog.log("executor.itemEvent bounceBack uid=\(item.tag.stableIdentifier) frame=\(current.debugDescription)")
+                        throw MoveExecutorError.moveRejected
+                    }
+                    CoronaDebugLog.verbose("executor.itemEvent frameSettled uid=\(item.tag.stableIdentifier) frame=\(current.debugDescription)")
+                    return
+                }
+                previous = current
             }
             try await Task.sleep(nanoseconds: 5_000_000)
         }

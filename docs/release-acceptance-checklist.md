@@ -39,6 +39,8 @@ Use this checklist for the first website-distributed release.
 - With the warning showing, relaunch without the env var and drag any item: the apply succeeds and both the warning icon and the panel error clear.
 - While a retry is scheduled (within ~12s of a failed apply), drag an item in the panel: no second apply runs concurrently (log shows `main.applySession supersedeScheduledRetry` or `main.applySession coalesced`), and the latest layout is what ends up applied.
 - Normal move: mouse is suppressed only during the move (~1s) and is fully responsive immediately after.
+- Normal move still succeeds: drag an item in the panel to a new valid position; the item physically lands at the target, the apply reports success, and the log shows `executor.itemEvent frameSettled` after mouseUp (no `executor.itemEvent bounceBack`).
+- Bounce-back detection: arrange a drop the system rejects (e.g. move an item next to a non-reorderable system item, or use a third-party app that pins its item's position so the drop snaps back); the item returns to its origin, the log shows `executor.itemEvent bounceBack`, and the apply treats the move as failed (retry/warning path per the failed-apply entries above) instead of reporting success.
 - Stall the main thread during a move (e.g. pause the process in the debugger or open a modal dialog mid-move): the move times out, mouse suppression lifts automatically within ~3 seconds (watchdog), and subsequent moves still work.
 
 ## App Coverage
