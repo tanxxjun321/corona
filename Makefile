@@ -5,6 +5,15 @@ XCODE_BUILD_DIR := .build/xcode-build
 CONFIGURATION ?= Debug
 SIGN_IDENTITY ?= -
 
+# Only override the Xcode project's signing settings when the caller
+# explicitly provides an identity; otherwise the pbxproj configuration
+# (Debug: Apple Development, Release: Developer ID Application) applies.
+ifneq ($(filter command line environment environment override,$(origin SIGN_IDENTITY)),)
+SIGN_IDENTITY_OVERRIDE := CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)"
+else
+SIGN_IDENTITY_OVERRIDE :=
+endif
+
 .PHONY: build swift-build test app release-app notarize verify release xcode-app run-app clean
 
 build:
@@ -18,7 +27,7 @@ test:
 
 app:
 	rm -rf "$(XCODE_BUILD_DIR)"
-	xcodebuild -project Corona.xcodeproj -scheme CoronaApp -configuration "$(CONFIGURATION)" -destination 'platform=macOS' BUILD_DIR="$(XCODE_BUILD_DIR)" SYMROOT="$(XCODE_BUILD_DIR)" CODE_SIGN_IDENTITY="$(SIGN_IDENTITY)" build
+	xcodebuild -project Corona.xcodeproj -scheme CoronaApp -configuration "$(CONFIGURATION)" -destination 'platform=macOS' BUILD_DIR="$(XCODE_BUILD_DIR)" SYMROOT="$(XCODE_BUILD_DIR)" $(SIGN_IDENTITY_OVERRIDE) build
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(dir $(APP_DIR))" "$(DIST_DIR)"
 	ditto "$(XCODE_BUILD_DIR)/$(CONFIGURATION)/$(APP_NAME).app" "$(APP_DIR)"

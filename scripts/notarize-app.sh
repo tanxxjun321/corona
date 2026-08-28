@@ -20,6 +20,10 @@ fi
 xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP_DIR"
 
+# Re-create the distribution zip from the stapled app so the artifact
+# carries the notarization ticket (the submitted zip predates stapling).
+ditto -c -k --keepParent "$APP_DIR" "$ZIP_PATH"
+
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 spctl --assess --type execute --verbose=2 "$APP_DIR"
 
