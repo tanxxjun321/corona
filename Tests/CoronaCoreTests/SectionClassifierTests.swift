@@ -91,6 +91,25 @@ final class SectionClassifierTests: XCTestCase {
         XCTAssertEqual(sections[3], .alwaysHidden)
     }
 
+    func testClassifyItemsToleratesDuplicateWindowIDs() {
+        let first = withBounds(
+            makeItem(windowID: 7, namespace: "a", title: "A", sourcePID: 10),
+            CGRect(x: 720, y: 0, width: 20, height: 22)
+        )
+        let second = withBounds(
+            makeItem(windowID: 7, namespace: "b", title: "B", sourcePID: 20),
+            CGRect(x: 650, y: 0, width: 20, height: 22)
+        )
+        let boundary = SectionBoundary(hiddenControlBounds: CGRect(x: 700, y: 0, width: 10, height: 22))
+        let logger = RecordingDiagnosticLogger()
+
+        let sections = SectionClassifier(logger: logger).classify(items: [first, second], boundary: boundary)
+
+        XCTAssertEqual(sections.count, 1)
+        XCTAssertEqual(sections[7], .visible)
+        XCTAssertEqual(logger.warnings.count, 1)
+    }
+
     private func withBounds(_ item: MenuBarItem, _ bounds: CGRect) -> MenuBarItem {
         var copy = item
         copy.bounds = bounds

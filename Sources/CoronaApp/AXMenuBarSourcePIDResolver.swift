@@ -3,6 +3,72 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+/// Shared, defensive readers for AX-returned values. A misbehaving third-party
+/// app can answer an AX query with a value of an unexpected type; every cast
+/// below is guarded by a CoreFoundation type-ID check so malformed responses
+/// degrade that item's handling instead of crashing Corona.
+private enum AXMenuBarElement {
+    static func extrasMenuBar(for pid: pid_t) -> AXUIElement? {
+        let app = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &value)
+        guard error == .success, let value else {
+            return nil
+        }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            CoronaDebugLog.log("discovery.ax malformedAXValue attribute=AXExtrasMenuBar pid=\(pid) typeID=\(CFGetTypeID(value))")
+            return nil
+        }
+        return unsafeDowncast(value, to: AXUIElement.self)
+    }
+
+    static func children(of element: AXUIElement) -> [AXUIElement] {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == CFArrayGetTypeID() else {
+            return []
+        }
+        return (unsafeDowncast(value, to: CFArray.self) as [CFTypeRef]).compactMap { child in
+            guard CFGetTypeID(child) == AXUIElementGetTypeID() else {
+                CoronaDebugLog.log("discovery.ax malformedAXValue attribute=AXChildren typeID=\(CFGetTypeID(child))")
+                return nil
+            }
+            return unsafeDowncast(child, to: AXUIElement.self)
+        }
+    }
+
+    static func frame(of element: AXUIElement) -> CGRect? {
+        var positionValue: CFTypeRef?
+        var sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionAXValue = axValue(positionValue, attribute: kAXPositionAttribute),
+              let sizeAXValue = axValue(sizeValue, attribute: kAXSizeAttribute) else {
+            return nil
+        }
+
+        var origin = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(positionAXValue, .cgPoint, &origin),
+              AXValueGetValue(sizeAXValue, .cgSize, &size) else {
+            return nil
+        }
+        return CGRect(origin: origin, size: size)
+    }
+
+    private static func axValue(_ value: CFTypeRef?, attribute: String) -> AXValue? {
+        guard let value else {
+            return nil
+        }
+        guard CFGetTypeID(value) == AXValueGetTypeID() else {
+            CoronaDebugLog.log("discovery.ax malformedAXValue attribute=\(attribute) typeID=\(CFGetTypeID(value))")
+            return nil
+        }
+        return unsafeDowncast(value, to: AXValue.self)
+    }
+}
+
 struct AXMenuBarSourcePIDResolver {
     func resolveSourcePIDs(for items: [MenuBarItem]) -> [UInt32: Int32] {
         guard AXIsProcessTrusted(), !items.isEmpty else {
@@ -15,12 +81,12 @@ struct AXMenuBarSourcePIDResolver {
         for app in NSWorkspace.shared.runningApplications {
             guard !unresolved.isEmpty else { break }
             let pid = app.processIdentifier
-            guard let extrasMenuBar = extrasMenuBar(for: pid) else {
+            guard let extrasMenuBar = AXMenuBarElement.extrasMenuBar(for: pid) else {
                 continue
             }
 
-            for child in children(of: extrasMenuBar) {
-                guard let frame = frame(of: child) else { continue }
+            for child in AXMenuBarElement.children(of: extrasMenuBar) {
+                guard let frame = AXMenuBarElement.frame(of: child) else { continue }
                 let center = CGPoint(x: frame.midX, y: frame.midY)
                 guard let match = unresolved.first(where: { _, bounds in
                     distance(from: center, to: CGPoint(x: bounds.midX, y: bounds.midY)) <= 1.5
@@ -34,43 +100,6 @@ struct AXMenuBarSourcePIDResolver {
         }
 
         return result
-    }
-
-    private func extrasMenuBar(for pid: pid_t) -> AXUIElement? {
-        let app = AXUIElementCreateApplication(pid)
-        var value: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &value)
-        guard error == .success else {
-            return nil
-        }
-        return (value as! AXUIElement)
-    }
-
-    private func children(of element: AXUIElement) -> [AXUIElement] {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success else {
-            return []
-        }
-        return value as? [AXUIElement] ?? []
-    }
-
-    private func frame(of element: AXUIElement) -> CGRect? {
-        var positionValue: CFTypeRef?
-        var sizeValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
-              let positionAXValue = positionValue,
-              let sizeAXValue = sizeValue else {
-            return nil
-        }
-
-        var origin = CGPoint.zero
-        var size = CGSize.zero
-        guard AXValueGetValue((positionAXValue as! AXValue), .cgPoint, &origin),
-              AXValueGetValue((sizeAXValue as! AXValue), .cgSize, &size) else {
-            return nil
-        }
-        return CGRect(origin: origin, size: size)
     }
 
     private func distance(from lhs: CGPoint, to rhs: CGPoint) -> CGFloat {
@@ -98,13 +127,13 @@ struct AXOrderedMenuBarScanner {
         var records: [AXRecord] = []
         for app in NSWorkspace.shared.runningApplications {
             let pid = app.processIdentifier
-            guard let extrasMenuBar = extrasMenuBar(for: pid) else {
+            guard let extrasMenuBar = AXMenuBarElement.extrasMenuBar(for: pid) else {
                 continue
             }
 
-            let children = children(of: extrasMenuBar)
+            let children = AXMenuBarElement.children(of: extrasMenuBar)
             for (index, child) in children.enumerated() {
-                guard let frame = frame(of: child),
+                guard let frame = AXMenuBarElement.frame(of: child),
                       isFiniteMenuBarBounds(frame),
                       isInMenuBarBand(frame, targetDisplayFrame: targetDisplayFrame) else {
                     continue
@@ -143,43 +172,6 @@ struct AXOrderedMenuBarScanner {
 
         CoronaDebugLog.verbose("discovery.ax phase1 records=\(sorted.count) order=\(sorted.map { "\($0.bundleIdentifier ?? $0.applicationName ?? "pid.\($0.sourcePID)"):item-\($0.globalOrdinal)@\($0.bounds.debugDescription)" })")
         return sorted
-    }
-
-    private func extrasMenuBar(for pid: pid_t) -> AXUIElement? {
-        let app = AXUIElementCreateApplication(pid)
-        var value: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar" as CFString, &value)
-        guard error == .success else {
-            return nil
-        }
-        return (value as! AXUIElement)
-    }
-
-    private func children(of element: AXUIElement) -> [AXUIElement] {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success else {
-            return []
-        }
-        return value as? [AXUIElement] ?? []
-    }
-
-    private func frame(of element: AXUIElement) -> CGRect? {
-        var positionValue: CFTypeRef?
-        var sizeValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
-              let positionAXValue = positionValue,
-              let sizeAXValue = sizeValue else {
-            return nil
-        }
-
-        var origin = CGPoint.zero
-        var size = CGSize.zero
-        guard AXValueGetValue((positionAXValue as! AXValue), .cgPoint, &origin),
-              AXValueGetValue((sizeAXValue as! AXValue), .cgSize, &size) else {
-            return nil
-        }
-        return CGRect(origin: origin, size: size)
     }
 
     private func title(of element: AXUIElement) -> String? {

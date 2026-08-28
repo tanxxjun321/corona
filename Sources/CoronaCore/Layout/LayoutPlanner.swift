@@ -17,16 +17,32 @@ public struct LayoutMove: Codable, Equatable, Sendable {
 }
 
 public struct LayoutPlanner {
-    public init() {}
+    private let logger: any DiagnosticLogging
+
+    public init(logger: any DiagnosticLogging = DisabledDiagnosticLogger()) {
+        self.logger = logger
+    }
 
     public func mergedOrder(
         cache: ItemCache,
         preference: LayoutPreference
     ) -> SectionOrder {
         var order = preference.savedOrder
-        let currentByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { item in
-            (item.tag.stableIdentifier, item)
-        })
+        // Items come from system-provided snapshots; duplicate stable
+        // identifiers must degrade to first-wins instead of crashing.
+        var currentByUID: [String: MenuBarItem] = [:]
+        var duplicateUIDs: [String] = []
+        for item in cache.allItems {
+            let uid = item.tag.stableIdentifier
+            guard currentByUID[uid] == nil else {
+                duplicateUIDs.append(uid)
+                continue
+            }
+            currentByUID[uid] = item
+        }
+        if !duplicateUIDs.isEmpty {
+            logger.log(.warning("LayoutPlanner dropped items with duplicate stable identifiers (first wins): \(duplicateUIDs.joined(separator: ", "))"))
+        }
         let currentUIDs = Set(currentByUID.keys)
         let knownUIDs = Set(order.visible + order.hidden + order.alwaysHidden)
 
@@ -37,9 +53,10 @@ public struct LayoutPlanner {
         }
 
         let targetForNewItems = normalizedNewItemsSection(preference)
+        var seenNewUIDs = Set<String>()
         let newUIDs = cache.allItems
             .map(\.tag.stableIdentifier)
-            .filter { !knownUIDs.contains($0) }
+            .filter { !knownUIDs.contains($0) && seenNewUIDs.insert($0).inserted }
 
         for uid in newUIDs {
             insert(uid, into: targetForNewItems, order: &order, placement: preference.newItemsPlacement)

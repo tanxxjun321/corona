@@ -73,6 +73,23 @@ final class LayoutPlannerTests: XCTestCase {
         XCTAssertEqual(order.alwaysHidden, [])
     }
 
+    func testMergedOrderToleratesDuplicateStableIdentifiers() {
+        let first = makeItem(windowID: 1, namespace: "app", title: "Dup", sourcePID: 10)
+        let second = makeItem(windowID: 2, namespace: "app", title: "Dup", sourcePID: 10)
+        let cache = ItemCache(
+            displayID: nil,
+            visibleItems: [first, second],
+            hiddenItems: [],
+            alwaysHiddenItems: []
+        )
+        let logger = RecordingDiagnosticLogger()
+
+        let order = LayoutPlanner(logger: logger).mergedOrder(cache: cache, preference: LayoutPreference())
+
+        XCTAssertEqual(order.visible, ["app:Dup"])
+        XCTAssertEqual(logger.warnings.count, 1)
+    }
+
     func testNextMoveWithinSectionUsesPreviousDesiredNeighbor() {
         let current = SectionOrder(hidden: ["a", "b", "c"])
         let desired = SectionOrder(hidden: ["a", "c", "b"])
