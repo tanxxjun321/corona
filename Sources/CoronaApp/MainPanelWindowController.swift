@@ -128,6 +128,13 @@ final class MainPanelWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// Shows or clears the persistent layout-apply failure (#18). Driven by
+    /// MenuBarController when retries are exhausted and on the next
+    /// successful apply.
+    func presentApplyFailure(_ message: String?) {
+        model.setApplyFailureMessage(message)
+    }
+
     func windowWillClose(_ notification: Notification) {
         refreshTask?.cancel()
         liveRefreshTask?.cancel()
@@ -219,6 +226,10 @@ final class MainPanelViewModel: ObservableObject {
     @Published private(set) var isApplying = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var statusMessage: String?
+    /// Persistent layout-apply failure (#18). Unlike `statusMessage` this is
+    /// not cleared by refreshes; it is set when apply retries are exhausted
+    /// and cleared on the next successful apply.
+    @Published private(set) var applyFailureMessage: String?
     @Published private(set) var canRunCoreFeatures = false
     @Published private(set) var menuBarBackgroundColor = MenuBarAppearanceSampler.backgroundColor(displayID: nil)
     @Published var selectedTab: MainPanelTab = .organize
@@ -712,6 +723,11 @@ final class MainPanelViewModel: ObservableObject {
         selectedTab = .settings
     }
 
+    func setApplyFailureMessage(_ message: String?) {
+        guard message != applyFailureMessage else { return }
+        applyFailureMessage = message
+    }
+
     private func currentCache(allowVisibilityChanges: Bool) async throws -> ItemCache {
         if allowVisibilityChanges {
             return try await visualCacheProvider()
@@ -1115,7 +1131,12 @@ private struct MainPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            if let statusMessage = model.statusMessage {
+            if let applyFailureMessage = model.applyFailureMessage {
+                Label(applyFailureMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(2)
+            } else if let statusMessage = model.statusMessage {
                 Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)

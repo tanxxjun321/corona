@@ -33,6 +33,9 @@ Use this checklist for the first website-distributed release.
 - Timer auto re-hide returns the revealed item to its original hidden section.
 - Relaunch with pending relocation restores pending items before applying saved layout.
 - A failed move does not leave the mouse button or drag state stuck.
+- Failed apply retry and warning (force failures by launching with `CORONA_DISABLE_DIRECT_MENU_BAR_MOVE=1`, e.g. `CORONA_DISABLE_DIRECT_MENU_BAR_MOVE=1 .build/app/Corona.app/Contents/MacOS/Corona`, with a saved layout that needs moves): the startup restore retries 3 times (~1s/3s/8s apart — watch for `main.applySession retryScheduled` log lines), then gives up and shows a warning status-item icon (filled triangle); opening the main panel shows a persistent orange error in the footer.
+- With the warning showing, relaunch without the env var and drag any item: the apply succeeds and both the warning icon and the panel error clear.
+- While a retry is scheduled (within ~12s of a failed apply), drag an item in the panel: no second apply runs concurrently (log shows `main.applySession supersedeScheduledRetry` or `main.applySession coalesced`), and the latest layout is what ends up applied.
 - Normal move: mouse is suppressed only during the move (~1s) and is fully responsive immediately after.
 - Stall the main thread during a move (e.g. pause the process in the debugger or open a modal dialog mid-move): the move times out, mouse suppression lifts automatically within ~3 seconds (watchdog), and subsequent moves still work.
 

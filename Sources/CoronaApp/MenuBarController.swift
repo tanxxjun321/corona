@@ -29,6 +29,14 @@ final class MenuBarController {
     private var lastLayoutApplicationResult: LayoutApplicationResult?
     private var autoRehideTask: Task<Void, Never>?
     private var startupLayoutRestoreTask: Task<Void, Never>?
+    /// The single in-flight apply session (an apply attempt plus its backoff
+    /// retries). All apply entry points funnel through `requestApplySession`
+    /// so two applies never run concurrently (#18).
+    private var applySessionTask: Task<LayoutApplicationResult, Never>?
+    private var applyRetryPolicy = LayoutApplyRetryPolicy()
+    /// Set when an apply session exhausted its retries; drives the status
+    /// item warning and the panel error until the next successful apply.
+    private var persistentApplyFailure: LayoutApplicationResult?
 
     private enum BoundaryStabilityTiming {
         static let pollIntervalNanoseconds: UInt64 = 40_000_000
@@ -78,6 +86,7 @@ final class MenuBarController {
     deinit {
         autoRehideTask?.cancel()
         startupLayoutRestoreTask?.cancel()
+        applySessionTask?.cancel()
         DistributedNotificationCenter.default().removeObserver(self)
     }
 
@@ -136,18 +145,27 @@ final class MenuBarController {
 
     private func updateStatusIcon(for snapshot: PermissionSnapshot) {
         let symbolName: String
+        let toolTip: String
         switch snapshot.capabilityStatus {
         case .missing:
             symbolName = "exclamationmark.triangle"
-        case .hasRequired:
-            symbolName = "menubar.rectangle"
-        case .hasAll:
-            symbolName = "menubar.rectangle"
+            toolTip = "Corona — Accessibility permission required"
+        case .hasRequired, .hasAll:
+            if persistentApplyFailure != nil {
+                // Persistent apply failure (#18): warn until the next
+                // successful apply clears it.
+                symbolName = "exclamationmark.triangle.fill"
+                toolTip = "Corona — saved layout could not be applied"
+            } else {
+                symbolName = "menubar.rectangle"
+                toolTip = "Corona"
+            }
         }
         statusItem.isVisible = settings.showMainIcon
         statusItem.length = NSStatusItem.squareLength
         statusItem.button?.image = Self.statusImage(named: symbolName, accessibilityDescription: "Corona")
         statusItem.button?.image?.isTemplate = true
+        statusItem.button?.toolTip = toolTip
     }
 
     private static func statusImage(named symbolName: String, accessibilityDescription: String) -> NSImage? {
@@ -247,15 +265,18 @@ final class MenuBarController {
                 visualCacheCleanup: { },
                 applyHandler: { [weak self] in
                     guard let self else { return .failed("Controller unavailable") }
-                    let result = await self.applySavedLayoutWithVisibleBoundary()
-                    self.lastLayoutApplicationResult = result
+                    let result = await self.requestApplySession()
                     self.rebuildMenu()
                     return result
                 },
                 applyMoveHandler: { [weak self] uid, desiredOrder in
                     guard let self else { return .failed("Controller unavailable") }
-                    let result = await self.applySingleMoveWithVisibleBoundary(uid: uid, desiredOrder: desiredOrder)
-                    self.lastLayoutApplicationResult = result
+                    let result = await self.requestApplySession(
+                        firstAttempt: { [weak self] in
+                            guard let self else { return .failed("Controller unavailable") }
+                            return await self.applySingleMoveWithVisibleBoundary(uid: uid, desiredOrder: desiredOrder)
+                        }
+                    )
                     self.rebuildMenu()
                     return result
                 },
@@ -270,6 +291,9 @@ final class MenuBarController {
                 }
             )
         }
+        // Seed a failure that persisted while the panel was closed (e.g. a
+        // failed startup restore) so the panel shows it immediately.
+        mainPanelWindowController?.presentApplyFailure(persistentApplyFailureMessage)
         mainPanelWindowController?.show()
     }
 
@@ -425,8 +449,10 @@ final class MenuBarController {
         startupLayoutRestoreTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 900_000_000)
             guard let self, !Task.isCancelled, self.permissionChecker.snapshot().canRunCoreFeatures else { return }
-            let result = await self.applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: true)
-            self.lastLayoutApplicationResult = result
+            // Routed through the shared apply session: failures get backoff
+            // retries and, if persistent, the warning UI instead of a
+            // log-only outcome (#18).
+            let result = await self.requestApplySession(collapseAfterAttempt: true)
             CoronaDebugLog.log("startup.restoreSavedLayout result=\(result.statusTitle)")
         }
     }
@@ -439,6 +465,110 @@ final class MenuBarController {
             return true
         }
         return !layoutStore.loadPendingRelocations().isEmpty
+    }
+
+    /// Single entry point for every layout apply (panel auto-apply, panel
+    /// single move, startup restore). Coalescing rule (#18), shared by manual
+    /// Organize and automatic retries: while an apply is running, the new
+    /// request merges into the in-flight session; while a retry is only
+    /// scheduled (sleeping out its backoff), the new request supersedes it so
+    /// the newest intent applies immediately. Two applies never run
+    /// concurrently either way.
+    ///
+    /// `firstAttempt`, when given, runs as the session's first attempt (e.g.
+    /// a single-move apply for a panel drag); retries always fall back to a
+    /// full saved-layout apply, which re-reads the persisted order.
+    private func requestApplySession(
+        collapseAfterAttempt: Bool = false,
+        firstAttempt: (@MainActor () async -> LayoutApplicationResult)? = nil
+    ) async -> LayoutApplicationResult {
+        switch applyRetryPolicy.requestAction(applyInFlight: applySessionTask != nil) {
+        case .coalesce:
+            CoronaDebugLog.log("main.applySession coalesced")
+            return await applySessionTask?.value ?? .failed("Controller unavailable")
+        case .supersedeScheduledRetry:
+            CoronaDebugLog.log("main.applySession supersedeScheduledRetry")
+            applySessionTask?.cancel()
+            applySessionTask = nil
+            applyRetryPolicy.scheduledRetryWasCancelled()
+        case .start:
+            break
+        }
+
+        let task = Task { @MainActor [weak self] () -> LayoutApplicationResult in
+            guard let self else { return .failed("Controller unavailable") }
+            return await self.runApplySession(
+                collapseAfterAttempt: collapseAfterAttempt,
+                firstAttempt: firstAttempt
+            )
+        }
+        applySessionTask = task
+        let result = await task.value
+        // A superseding request may already have installed a newer session.
+        if applySessionTask == task {
+            applySessionTask = nil
+        }
+        return result
+    }
+
+    private func runApplySession(
+        collapseAfterAttempt: Bool,
+        firstAttempt: (@MainActor () async -> LayoutApplicationResult)?
+    ) async -> LayoutApplicationResult {
+        applyRetryPolicy.beginSession()
+        var attemptCount = 0
+        var result: LayoutApplicationResult = .failed("applySessionDidNotRun")
+
+        while true {
+            attemptCount += 1
+            if attemptCount == 1, let firstAttempt {
+                result = await firstAttempt()
+            } else {
+                result = await applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: collapseAfterAttempt)
+            }
+            lastLayoutApplicationResult = result
+            CoronaDebugLog.log("main.applySession attempt=\(attemptCount) result=\(result.statusTitle)")
+
+            if result.isSuccessfulApply {
+                applyRetryPolicy.recordSuccess()
+                clearPersistentApplyFailure()
+                return result
+            }
+            guard !Task.isCancelled else { return result }
+            guard let delay = applyRetryPolicy.backoffAfterFailure() else {
+                presentPersistentApplyFailure(result)
+                return result
+            }
+            CoronaDebugLog.log("main.applySession retryScheduled retry=\(applyRetryPolicy.retriesScheduled) delaySeconds=\(delay)")
+            try? await Task.sleep(nanoseconds: UInt64((delay * 1_000_000_000).rounded()))
+            if Task.isCancelled {
+                // Superseded by a newer request during the backoff sleep.
+                applyRetryPolicy.scheduledRetryWasCancelled()
+                CoronaDebugLog.log("main.applySession retrySupersededDuringBackoff")
+                return result
+            }
+            applyRetryPolicy.scheduledRetryDidFire()
+        }
+    }
+
+    private var persistentApplyFailureMessage: String? {
+        guard let persistentApplyFailure else { return nil }
+        return "Could not apply the menu bar layout after several attempts (\(persistentApplyFailure.failureDetail)). Corona retries on the next layout change."
+    }
+
+    private func presentPersistentApplyFailure(_ result: LayoutApplicationResult) {
+        persistentApplyFailure = result
+        CoronaDebugLog.log("main.applySession persistentFailure result=\(result.statusTitle)")
+        updateStatusIcon(for: permissionChecker.snapshot())
+        mainPanelWindowController?.presentApplyFailure(persistentApplyFailureMessage)
+    }
+
+    private func clearPersistentApplyFailure() {
+        guard persistentApplyFailure != nil else { return }
+        persistentApplyFailure = nil
+        CoronaDebugLog.log("main.applySession persistentFailureCleared")
+        updateStatusIcon(for: permissionChecker.snapshot())
+        mainPanelWindowController?.presentApplyFailure(nil)
     }
 
     private func applySavedLayoutWithVisibleBoundary(collapseAfterAttempt: Bool = false) async -> LayoutApplicationResult {
@@ -460,9 +590,9 @@ final class MenuBarController {
             }
         } else {
             // Timeout path: abort instead of applying with collapsed-state
-            // coordinates. Apply has no retry yet (#18), so continuing with a
-            // stale boundary would misclassify every section and move items
-            // to the wrong targets.
+            // coordinates — continuing with a stale boundary would
+            // misclassify every section and move items to the wrong targets.
+            // The failure feeds into the retry session (#18).
             CoronaDebugLog.log("main.applySavedLayout boundaryStabilityTimeout action=abort")
             result = .failed("boundaryNotStable")
         }

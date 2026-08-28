@@ -59,6 +59,7 @@
 		1A200000000000000000001E /* LayoutSatisfaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011E /* LayoutSatisfaction.swift */; };
 		1A200000000000000000001F /* BoundaryStabilityEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */; };
 		1A2000000000000000000020 /* MenuBarStabilitySignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000120 /* MenuBarStabilitySignature.swift */; };
+		1A2000000000000000000021 /* LayoutApplyRetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000121 /* LayoutApplyRetryPolicy.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -117,6 +118,7 @@
 		1A200000000000000000011E /* LayoutSatisfaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSatisfaction.swift; sourceTree = "<group>"; };
 		1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundaryStabilityEvaluator.swift; sourceTree = "<group>"; };
 		1A2000000000000000000120 /* MenuBarStabilitySignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarStabilitySignature.swift; sourceTree = "<group>"; };
+		1A2000000000000000000121 /* LayoutApplyRetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplyRetryPolicy.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -221,6 +223,7 @@
 				1A200000000000000000011F /* BoundaryStabilityEvaluator.swift */,
 				1A200000000000000000010C /* LayoutApplicationPlanner.swift */,
 				1A200000000000000000011D /* LayoutApplyStepBudget.swift */,
+				1A2000000000000000000121 /* LayoutApplyRetryPolicy.swift */,
 				1A200000000000000000010D /* LayoutDraft.swift */,
 				1A200000000000000000010E /* LayoutPlanner.swift */,
 				1A200000000000000000011E /* LayoutSatisfaction.swift */,
@@ -410,6 +413,7 @@
 				1A200000000000000000001A /* AppSettings.swift in Sources */,
 				1A200000000000000000001F /* BoundaryStabilityEvaluator.swift in Sources */,
 				1A2000000000000000000020 /* MenuBarStabilitySignature.swift in Sources */,
+				1A2000000000000000000021 /* LayoutApplyRetryPolicy.swift in Sources */,
 				1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,

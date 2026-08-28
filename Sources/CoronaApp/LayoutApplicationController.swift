@@ -28,6 +28,23 @@ enum LayoutApplicationResult: Equatable {
             return "Layout apply failed: \(message)"
         }
     }
+
+    /// Short, user-presentable summary of why an apply did not succeed,
+    /// used by the persistent-failure warning UI (#18).
+    var failureDetail: String {
+        switch self {
+        case .satisfied, .applied, .moved:
+            return statusTitle
+        case .missingBoundary:
+            return "layout controls unavailable"
+        case .waitingForItem(let uid):
+            return "still waiting for \(uid)"
+        case .waitingForDestination:
+            return "layout target unavailable"
+        case .failed(let message):
+            return message
+        }
+    }
 }
 
 final class LayoutApplicationController {
