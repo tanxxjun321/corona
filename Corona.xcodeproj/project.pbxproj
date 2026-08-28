@@ -9,17 +9,12 @@
 /* Begin PBXBuildFile section */
 		1A1000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000101 /* AppDelegate.swift */; };
 		1A1000000000000000000002 /* DirectMoveEventExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000102 /* DirectMoveEventExecutor.swift */; };
-		1A1000000000000000000003 /* HiddenItemsPanelWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */; };
 		1A1000000000000000000004 /* LayoutApplicationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000104 /* LayoutApplicationController.swift */; };
-		1A1000000000000000000005 /* LayoutEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000105 /* LayoutEditorView.swift */; };
-		1A1000000000000000000006 /* LayoutEditorWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000106 /* LayoutEditorWindowController.swift */; };
 		1A1000000000000000000007 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000107 /* MenuBarController.swift */; };
 		1A1000000000000000000008 /* MenuBarThumbnailProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */; };
 		1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */; };
-		1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010A /* ScanResultsWindowController.swift */; };
 		1A100000000000000000000B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010B /* SettingsView.swift */; };
 		1A100000000000000000000C /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010C /* SettingsViewModel.swift */; };
-		1A100000000000000000000D /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010D /* SettingsWindowController.swift */; };
 		1A100000000000000000000E /* StatusSectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010E /* StatusSectionController.swift */; };
 		1A100000000000000000000F /* SystemPermissionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A100000000000000000010F /* SystemPermissionChecker.swift */; };
 		1A1000000000000000000010 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1000000000000000000110 /* main.swift */; };
@@ -43,7 +38,6 @@
 		1A2000000000000000000008 /* MenuBarTargetDisplayFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000108 /* MenuBarTargetDisplayFilter.swift */; };
 		1A2000000000000000000009 /* MenuBarWindowCandidateFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000109 /* MenuBarWindowCandidateFilter.swift */; };
 		1A200000000000000000000A /* SnapshotPollingGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000010A /* SnapshotPollingGate.swift */; };
-		1A200000000000000000000B /* DistributionChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000010B /* DistributionChannel.swift */; };
 		1A200000000000000000000C /* LayoutApplicationPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000010C /* LayoutApplicationPlanner.swift */; };
 		1A200000000000000000000D /* LayoutDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000010D /* LayoutDraft.swift */; };
 		1A200000000000000000000E /* LayoutPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000010E /* LayoutPlanner.swift */; };
@@ -66,17 +60,12 @@
 /* Begin PBXFileReference section */
 		1A1000000000000000000101 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		1A1000000000000000000102 /* DirectMoveEventExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectMoveEventExecutor.swift; sourceTree = "<group>"; };
-		1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HiddenItemsPanelWindowController.swift; sourceTree = "<group>"; };
 		1A1000000000000000000104 /* LayoutApplicationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplicationController.swift; sourceTree = "<group>"; };
-		1A1000000000000000000105 /* LayoutEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutEditorView.swift; sourceTree = "<group>"; };
-		1A1000000000000000000106 /* LayoutEditorWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutEditorWindowController.swift; sourceTree = "<group>"; };
 		1A1000000000000000000107 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
 		1A1000000000000000000108 /* MenuBarThumbnailProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarThumbnailProvider.swift; sourceTree = "<group>"; };
 		1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicMenuBarDiscoveryProvider.swift; sourceTree = "<group>"; };
-		1A100000000000000000010A /* ScanResultsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanResultsWindowController.swift; sourceTree = "<group>"; };
 		1A100000000000000000010B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A100000000000000000010C /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
-		1A100000000000000000010D /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		1A100000000000000000010E /* StatusSectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusSectionController.swift; sourceTree = "<group>"; };
 		1A100000000000000000010F /* SystemPermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPermissionChecker.swift; sourceTree = "<group>"; };
 		1A1000000000000000000110 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -103,7 +92,6 @@
 		1A2000000000000000000108 /* MenuBarTargetDisplayFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarTargetDisplayFilter.swift; sourceTree = "<group>"; };
 		1A2000000000000000000109 /* MenuBarWindowCandidateFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarWindowCandidateFilter.swift; sourceTree = "<group>"; };
 		1A200000000000000000010A /* SnapshotPollingGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotPollingGate.swift; sourceTree = "<group>"; };
-		1A200000000000000000010B /* DistributionChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistributionChannel.swift; sourceTree = "<group>"; };
 		1A200000000000000000010C /* LayoutApplicationPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplicationPlanner.swift; sourceTree = "<group>"; };
 		1A200000000000000000010D /* LayoutDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutDraft.swift; sourceTree = "<group>"; };
 		1A200000000000000000010E /* LayoutPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutPlanner.swift; sourceTree = "<group>"; };
@@ -161,10 +149,7 @@
 				1A1000000000000000000117 /* CoronaDebugLog.swift */,
 				1A1000000000000000000102 /* DirectMoveEventExecutor.swift */,
 				1A1000000000000000000119 /* HiddenItemsHoverBarController.swift */,
-				1A1000000000000000000103 /* HiddenItemsPanelWindowController.swift */,
 				1A1000000000000000000104 /* LayoutApplicationController.swift */,
-				1A1000000000000000000105 /* LayoutEditorView.swift */,
-				1A1000000000000000000106 /* LayoutEditorWindowController.swift */,
 				1A1000000000000000000116 /* MainPanelWindowController.swift */,
 				1A1000000000000000000107 /* MenuBarController.swift */,
 				1A100000000000000000011D /* MenuBarAppearanceSampler.swift */,
@@ -172,10 +157,8 @@
 				1A1000000000000000000118 /* MenuBarVisualSnapshotProvider.swift */,
 				1A100000000000000000011A /* PrivateMenuBarWindowListProvider.swift */,
 				1A1000000000000000000109 /* PublicMenuBarDiscoveryProvider.swift */,
-				1A100000000000000000010A /* ScanResultsWindowController.swift */,
 				1A100000000000000000010B /* SettingsView.swift */,
 				1A100000000000000000010C /* SettingsViewModel.swift */,
-				1A100000000000000000010D /* SettingsWindowController.swift */,
 				1A100000000000000000011C /* SkyLightWindowImageProvider.swift */,
 				1A100000000000000000010E /* StatusSectionController.swift */,
 				1A100000000000000000010F /* SystemPermissionChecker.swift */,
@@ -189,7 +172,6 @@
 			children = (
 				1A2000000000000000000302 /* Diagnostics */,
 				1A2000000000000000000303 /* Discovery */,
-				1A2000000000000000000304 /* Distribution */,
 				1A2000000000000000000305 /* Layout */,
 				1A2000000000000000000306 /* MenuBar */,
 				1A2000000000000000000307 /* Move */,
@@ -223,14 +205,6 @@
 				1A200000000000000000010A /* SnapshotPollingGate.swift */,
 			);
 			path = Discovery;
-			sourceTree = "<group>";
-		};
-		1A2000000000000000000304 /* Distribution */ = {
-			isa = PBXGroup;
-			children = (
-				1A200000000000000000010B /* DistributionChannel.swift */,
-			);
-			path = Distribution;
 			sourceTree = "<group>";
 		};
 		1A2000000000000000000305 /* Layout */ = {
@@ -382,10 +356,7 @@
 			files = (
 				1A1000000000000000000001 /* AppDelegate.swift in Sources */,
 				1A1000000000000000000002 /* DirectMoveEventExecutor.swift in Sources */,
-				1A1000000000000000000003 /* HiddenItemsPanelWindowController.swift in Sources */,
 				1A1000000000000000000004 /* LayoutApplicationController.swift in Sources */,
-				1A1000000000000000000005 /* LayoutEditorView.swift in Sources */,
-				1A1000000000000000000006 /* LayoutEditorWindowController.swift in Sources */,
 				1A1000000000000000000013 /* MainPanelWindowController.swift in Sources */,
 				1A1000000000000000000014 /* CoronaDebugLog.swift in Sources */,
 				1A1000000000000000000007 /* MenuBarController.swift in Sources */,
@@ -407,7 +378,6 @@
 				1A2000000000000000000008 /* MenuBarTargetDisplayFilter.swift in Sources */,
 				1A2000000000000000000009 /* MenuBarWindowCandidateFilter.swift in Sources */,
 				1A200000000000000000000A /* SnapshotPollingGate.swift in Sources */,
-				1A200000000000000000000B /* DistributionChannel.swift in Sources */,
 				1A200000000000000000000C /* LayoutApplicationPlanner.swift in Sources */,
 				1A200000000000000000000D /* LayoutDraft.swift in Sources */,
 				1A200000000000000000000E /* LayoutPlanner.swift in Sources */,
@@ -426,10 +396,8 @@
 				1A200000000000000000001A /* AppSettings.swift in Sources */,
 				1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
-				1A100000000000000000000A /* ScanResultsWindowController.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,
 				1A100000000000000000000C /* SettingsViewModel.swift in Sources */,
-				1A100000000000000000000D /* SettingsWindowController.swift in Sources */,
 				1A100000000000000000000E /* StatusSectionController.swift in Sources */,
 				1A100000000000000000000F /* SystemPermissionChecker.swift in Sources */,
 				1A1000000000000000000010 /* main.swift in Sources */,

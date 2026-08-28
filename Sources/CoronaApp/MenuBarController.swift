@@ -23,16 +23,12 @@ final class MenuBarController {
     private let layoutStore: LayoutPersistenceStore
     private let thumbnailProvider: MenuBarThumbnailProviding
     private var settings: AppSettings
-    private var scanResultsWindowController: ScanResultsWindowController?
     private var mainPanelWindowController: MainPanelWindowController?
-    private var layoutEditorWindowController: LayoutEditorWindowController?
-    private var hiddenItemsPanelWindowController: HiddenItemsPanelWindowController?
     private var hiddenItemsHoverBarController: HiddenItemsHoverBarController?
     private var layoutApplicationController: LayoutApplicationController?
     private var lastLayoutApplicationResult: LayoutApplicationResult?
     private var autoRehideTask: Task<Void, Never>?
     private var startupLayoutRestoreTask: Task<Void, Never>?
-    private var visualCapturePreviousVisibility: (hidden: StatusSectionVisibility, alwaysHidden: StatusSectionVisibility)?
 
     private struct StabilitySignature: Equatable {
         var items: [Item]
@@ -284,9 +280,7 @@ final class MenuBarController {
                     }
                     return try await self.currentMenuBarCacheWithoutChangingVisibility()
                 },
-                visualCacheCleanup: { [weak self] in
-                    self?.restoreVisualCaptureVisibility()
-                },
+                visualCacheCleanup: { },
                 applyHandler: { [weak self] in
                     guard let self else { return .failed("Controller unavailable") }
                     let result = await self.applySavedLayoutWithVisibleBoundary()
@@ -315,65 +309,6 @@ final class MenuBarController {
         mainPanelWindowController?.show()
     }
 
-    @objc private func openLayoutEditor() {
-        if layoutEditorWindowController == nil {
-            layoutEditorWindowController = LayoutEditorWindowController(
-                cacheController: cacheController,
-                layoutStore: layoutStore,
-                settingsStore: settingsStore,
-                boundaryProvider: { [weak self] in
-                    self?.sectionController.currentBoundary()
-                },
-                applyHandler: { [weak self] in
-                    guard let self else { return .failed("Controller unavailable") }
-                    let result = await self.applySavedLayoutWithVisibleBoundary()
-                    self.lastLayoutApplicationResult = result
-                    self.rebuildMenu()
-                    return result
-                }
-            )
-        }
-        layoutEditorWindowController?.show()
-    }
-
-    @objc private func openHiddenPanel() {
-        if hiddenItemsPanelWindowController == nil {
-            hiddenItemsPanelWindowController = HiddenItemsPanelWindowController(
-                cacheController: cacheController,
-                layoutStore: layoutStore,
-                thumbnailProvider: thumbnailProvider,
-                boundaryProvider: { [weak self] in
-                    self?.sectionController.currentBoundary()
-                },
-                revealHandler: { [weak self] uid in
-                    guard let self else { return .failed("Controller unavailable") }
-                    CoronaDebugLog.log("hiddenPanel.reveal expandOnly uid=\(uid)")
-                    await MainActor.run {
-                        self.sectionController.setHiddenSectionVisible(true)
-                        self.rebuildMenu()
-                    }
-                    let result = LayoutApplicationResult.satisfied
-                    self.scheduleAutoRehideIfNeeded()
-                    return result
-                }
-            )
-        }
-        hiddenItemsPanelWindowController?.show()
-    }
-
-    @objc private func openScanResults() {
-        if scanResultsWindowController == nil {
-            scanResultsWindowController = ScanResultsWindowController(
-                cacheController: cacheController,
-                thumbnailProvider: thumbnailProvider,
-                boundaryProvider: { [weak self] in
-                    self?.sectionController.currentBoundary()
-                }
-            )
-        }
-        scanResultsWindowController?.show()
-    }
-
     private func startHiddenItemsHoverBar() {
         guard hiddenItemsHoverBarController == nil else { return }
         let controller = HiddenItemsHoverBarController(
@@ -390,9 +325,7 @@ final class MenuBarController {
                 }
                 return try await self.currentMenuBarCacheWithoutChangingVisibility()
             },
-            visualCacheCleanup: { [weak self] in
-                self?.restoreVisualCaptureVisibility()
-            },
+            visualCacheCleanup: { },
             revealHandler: { [weak self] uid in
                 guard let self else { return .failed("Controller unavailable") }
                 CoronaDebugLog.log("hoverBar.reveal expandOnly uid=\(uid)")
@@ -404,62 +337,6 @@ final class MenuBarController {
         )
         hiddenItemsHoverBarController = controller
         controller.start()
-    }
-
-    @MainActor
-    private func captureVisualMenuBarCache() async throws -> ItemCache {
-        let previousVisibility = (
-            hidden: sectionController.hiddenVisibility,
-            alwaysHidden: sectionController.alwaysHiddenVisibility
-        )
-        visualCapturePreviousVisibility = previousVisibility
-
-        sectionController.setHiddenSectionVisible(false)
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionVisible(false)
-        }
-
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        let baselineSnapshot = try await cacheController.refresh()
-
-        sectionController.setHiddenSectionVisible(true)
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        let hiddenSnapshot = try await cacheController.refresh()
-
-        var alwaysHiddenSnapshot: MenuBarSnapshot?
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionVisible(true)
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            alwaysHiddenSnapshot = try await cacheController.refresh()
-        }
-
-        let cache = stagedVisualCache(
-            baselineSnapshot: baselineSnapshot,
-            hiddenSnapshot: hiddenSnapshot,
-            alwaysHiddenSnapshot: alwaysHiddenSnapshot
-        )
-        CoronaDebugLog.log("visualCapture.staged baseline=\(baselineSnapshot.items.count) hiddenStage=\(hiddenSnapshot.items.count) alwaysStage=\(alwaysHiddenSnapshot?.items.count ?? 0) visible=\(cache.visibleItems.count) hidden=\(cache.hiddenItems.count) alwaysHidden=\(cache.alwaysHiddenItems.count)")
-        return cache
-    }
-
-    private func stagedVisualCache(
-        baselineSnapshot: MenuBarSnapshot,
-        hiddenSnapshot: MenuBarSnapshot,
-        alwaysHiddenSnapshot: MenuBarSnapshot?
-    ) -> ItemCache {
-        let visibleWindowIDs = Set(baselineSnapshot.items.map(\.windowID))
-        let hiddenItems = hiddenSnapshot.items.filter { !visibleWindowIDs.contains($0.windowID) }
-        let hiddenWindowIDs = Set(hiddenItems.map(\.windowID))
-        let alwaysHiddenItems = (alwaysHiddenSnapshot?.items ?? []).filter { item in
-            !visibleWindowIDs.contains(item.windowID) && !hiddenWindowIDs.contains(item.windowID)
-        }
-
-        return ItemCache(
-            displayID: alwaysHiddenSnapshot?.displayID ?? hiddenSnapshot.displayID ?? baselineSnapshot.displayID,
-            visibleItems: baselineSnapshot.items,
-            hiddenItems: hiddenItems,
-            alwaysHiddenItems: alwaysHiddenItems
-        )
     }
 
     @MainActor
@@ -543,19 +420,6 @@ final class MenuBarController {
             hiddenItems: hiddenItems.sortedByMenuBarPosition(),
             alwaysHiddenItems: []
         )
-    }
-
-    @MainActor
-    private func restoreVisualCaptureVisibility() {
-        guard let previousVisibility = visualCapturePreviousVisibility else { return }
-        visualCapturePreviousVisibility = nil
-
-        sectionController.setHiddenSectionVisible(previousVisibility.hidden == .shown)
-        if settings.enableAlwaysHiddenSection {
-            sectionController.setAlwaysHiddenSectionEnabled(true)
-            sectionController.setAlwaysHiddenSectionVisible(previousVisibility.alwaysHidden == .shown)
-        }
-        rebuildMenu()
     }
 
     private func ensureLayoutApplicationController() -> LayoutApplicationController {
@@ -827,11 +691,6 @@ final class MenuBarController {
     @objc private func openSettings() {
         openMainPanel()
         mainPanelWindowController?.showSettings()
-    }
-
-    @objc private func refreshPermissions() {
-        mainPanelWindowController?.refreshPermissions()
-        rebuildMenu()
     }
 
     @objc private func quit() {

@@ -14,16 +14,6 @@ public protocol DiagnosticLogging {
     func log(_ event: DiagnosticEvent)
 }
 
-public final class MemoryDiagnosticLogger: DiagnosticLogging {
-    public private(set) var events: [DiagnosticEvent] = []
-
-    public init() {}
-
-    public func log(_ event: DiagnosticEvent) {
-        events.append(event)
-    }
-}
-
 public struct DisabledDiagnosticLogger: DiagnosticLogging {
     public init() {}
 

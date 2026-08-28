@@ -32,12 +32,6 @@ public struct MenuBarItemIdentityAssigner {
             return copy
         }
     }
-
-    public func stableItemsForPersistence(from items: [MenuBarItem]) -> [MenuBarItem] {
-        items.filter { item in
-            item.sourcePID != nil && item.canBeHidden
-        }
-    }
 }
 
 private struct IdentityGroupKey: Hashable {

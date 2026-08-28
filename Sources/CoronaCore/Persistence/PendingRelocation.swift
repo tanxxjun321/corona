@@ -52,18 +52,3 @@ public enum PendingRelocation: Codable, Equatable, Sendable {
         }
     }
 }
-
-public struct PendingReturnDestination: Codable, Equatable, Sendable {
-    public enum Position: String, Codable, Equatable, Sendable {
-        case left
-        case right
-    }
-
-    public var neighbor: String
-    public var position: Position
-
-    public init(neighbor: String, position: Position) {
-        self.neighbor = neighbor
-        self.position = position
-    }
-}

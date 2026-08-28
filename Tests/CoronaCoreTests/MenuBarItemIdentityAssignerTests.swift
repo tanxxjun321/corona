@@ -23,16 +23,6 @@ final class MenuBarItemIdentityAssignerTests: XCTestCase {
         XCTAssertEqual(assigned[0].tag.stableIdentifier, "com.example.one:One:1")
         XCTAssertEqual(assigned[1].tag.stableIdentifier, "com.example.one:One:0")
     }
-
-    func testPersistenceFiltersUnresolvedSourcePIDAndNonHideableItems() {
-        let stable = makeItem(windowID: 1, namespace: "com.example.stable", title: "Stable", sourcePID: 100)
-        let unresolved = makeItem(windowID: 2, namespace: "com.example.unresolved", title: "Unresolved", sourcePID: nil)
-        let control = makeItem(windowID: 3, namespace: "com.example.control", title: "Control", sourcePID: 200, canBeHidden: false)
-
-        let items = MenuBarItemIdentityAssigner().stableItemsForPersistence(from: [stable, unresolved, control])
-
-        XCTAssertEqual(items.map(\.windowID), [1])
-    }
 }
 
 func makeItem(
