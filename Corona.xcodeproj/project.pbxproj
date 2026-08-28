@@ -62,6 +62,7 @@
 		1A2000000000000000000021 /* LayoutApplyRetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000121 /* LayoutApplyRetryPolicy.swift */; };
 		1A2000000000000000000022 /* StartupLayoutRestorePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000122 /* StartupLayoutRestorePolicy.swift */; };
 		1A2000000000000000000023 /* PendingRelocationRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000123 /* PendingRelocationRecovery.swift */; };
+		1A2000000000000000000024 /* LayoutReconciliationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2000000000000000000124 /* LayoutReconciliationController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -123,6 +124,7 @@
 		1A2000000000000000000121 /* LayoutApplyRetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplyRetryPolicy.swift; sourceTree = "<group>"; };
 		1A2000000000000000000122 /* StartupLayoutRestorePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupLayoutRestorePolicy.swift; sourceTree = "<group>"; };
 		1A2000000000000000000123 /* PendingRelocationRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRelocationRecovery.swift; sourceTree = "<group>"; };
+		1A2000000000000000000124 /* LayoutReconciliationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutReconciliationController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +238,7 @@
 				1A2000000000000000000110 /* SectionOrder.swift */,
 				1A2000000000000000000122 /* StartupLayoutRestorePolicy.swift */,
 				1A2000000000000000000123 /* PendingRelocationRecovery.swift */,
+				1A2000000000000000000124 /* LayoutReconciliationController.swift */,
 			);
 			path = Layout;
 			sourceTree = "<group>";
@@ -422,6 +425,7 @@
 				1A2000000000000000000021 /* LayoutApplyRetryPolicy.swift in Sources */,
 				1A2000000000000000000022 /* StartupLayoutRestorePolicy.swift in Sources */,
 				1A2000000000000000000023 /* PendingRelocationRecovery.swift in Sources */,
+				1A2000000000000000000024 /* LayoutReconciliationController.swift in Sources */,
 				1A100000000000000000001B /* BuiltInMenuBarDisplay.swift in Sources */,
 				1A1000000000000000000009 /* PublicMenuBarDiscoveryProvider.swift in Sources */,
 				1A100000000000000000000B /* SettingsView.swift in Sources */,
