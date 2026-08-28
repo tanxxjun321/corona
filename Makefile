@@ -14,7 +14,7 @@ else
 SIGN_IDENTITY_OVERRIDE :=
 endif
 
-.PHONY: build swift-build test app release-app notarize verify release xcode-app run-app clean
+.PHONY: build swift-build test check-manifest app release-app notarize verify release xcode-app run-app clean
 
 build:
 	xcodebuild -project Corona.xcodeproj -target CoronaApp -configuration Debug build
@@ -24,6 +24,9 @@ swift-build:
 
 test:
 	swift test
+
+check-manifest:
+	bash scripts/check-pbxproj-manifest.sh
 
 app:
 	rm -rf "$(XCODE_BUILD_DIR)"

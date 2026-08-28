@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run CoronaCore unit tests
+        run: swift test
+
+      - name: Build CoronaApp (Xcode)
+        run: xcodebuild -project Corona.xcodeproj -scheme CoronaApp -configuration Debug -destination 'platform=macOS' build
+
+      - name: Check pbxproj manifest
+        run: bash scripts/check-pbxproj-manifest.sh
