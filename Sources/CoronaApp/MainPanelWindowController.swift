@@ -1070,7 +1070,11 @@ private struct MainPanelView: View {
     @ObservedObject var settingsModel: SettingsViewModel
 
     var body: some View {
-        TabView(selection: $model.selectedTab) {
+        VStack(spacing: 0) {
+            if !settingsModel.settings.showMainIcon {
+                hiddenIconBanner
+            }
+            TabView(selection: $model.selectedTab) {
             VStack(spacing: 0) {
                 toolbar
                 Divider()
@@ -1088,8 +1092,26 @@ private struct MainPanelView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
                 .tag(MainPanelTab.settings)
+            }
         }
         .frame(minWidth: 920, minHeight: 560)
+    }
+
+    /// Shown whenever the status item is hidden so a user who re-opened the
+    /// panel via relaunch always has an obvious way to restore the icon.
+    private var hiddenIconBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "eye.slash")
+            Text("Corona's menu bar icon is hidden.")
+            Spacer()
+            Button("Show Menu Bar Icon") {
+                settingsModel.settings.showMainIcon = true
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.accentColor.opacity(0.12))
     }
 
     private var toolbar: some View {

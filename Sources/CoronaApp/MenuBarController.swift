@@ -190,7 +190,7 @@ final class MenuBarController {
         case .hasAll:
             symbolName = "menubar.rectangle"
         }
-        statusItem.isVisible = true
+        statusItem.isVisible = settings.showMainIcon
         statusItem.length = NSStatusItem.squareLength
         statusItem.button?.image = Self.statusImage(named: symbolName, accessibilityDescription: "Corona")
         statusItem.button?.image?.isTemplate = true
@@ -254,6 +254,16 @@ final class MenuBarController {
         }
 
         showHiddenItems(attachedTo: statusItem.button)
+    }
+
+    /// Re-entry path for the "icon hidden" state: launching Corona again while
+    /// it is already running (Finder/Spotlight/`open`) must always surface a
+    /// usable UI. We deliberately re-open the main panel unconditionally —
+    /// when the icon is hidden this is the only way back in, and the panel
+    /// itself offers to restore the icon (see MainPanelView's hidden-icon
+    /// banner). Never gate this on `settings.showMainIcon`.
+    func handleReopen() {
+        openMainPanel()
     }
 
     @objc private func openMainPanel() {

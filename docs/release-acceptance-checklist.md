@@ -25,6 +25,9 @@ Use this checklist for the first website-distributed release.
 ## Hide, Reveal, And Recovery
 
 - Show/hide hidden section works from the menu bar item.
+- Turning off "Show main menu bar icon" hides Corona's own status item immediately; turning it back on restores it.
+- With the main icon hidden, launching Corona again (Finder/Spotlight/`open`) re-opens the main panel showing the "menu bar icon is hidden" banner with a working "Show Menu Bar Icon" button.
+- Hidden main-icon state persists across app restarts (icon stays hidden after relaunch until re-enabled).
 - Saving a layout and relaunching restores the saved layout.
 - Hidden Panel Reveal moves an item to visible.
 - Timer auto re-hide returns the revealed item to its original hidden section.
