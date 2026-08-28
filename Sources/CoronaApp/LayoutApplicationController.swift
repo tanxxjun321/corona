@@ -66,8 +66,14 @@ final class LayoutApplicationController {
         self.logger = logger
     }
 
-    func applySavedLayout(maxSteps: Int = 20) async -> LayoutApplicationResult {
-        let limit = max(1, maxSteps)
+    func applySavedLayout(maxSteps: Int? = nil) async -> LayoutApplicationResult {
+        let budgetedSteps: Int
+        if let maxSteps {
+            budgetedSteps = maxSteps
+        } else {
+            budgetedSteps = await defaultApplyStepLimit()
+        }
+        let limit = max(1, budgetedSteps)
         var moveCount = 0
         CoronaDebugLog.log("layout.applySavedLayout start maxSteps=\(limit)")
         let pendingResult = await recoverPendingRelocations(maxSteps: limit)
@@ -110,6 +116,15 @@ final class LayoutApplicationController {
         let firstResult = await applyPreferredStep(uid: uid)
         CoronaDebugLog.log("layout.applySingleMove preferredResult uid=\(uid) result=\(firstResult.statusTitle)")
         return firstResult
+    }
+
+    private func defaultApplyStepLimit() async -> Int {
+        guard let boundary = await boundaryProvider(),
+              let cache = try? await cacheController.cache(boundary: boundary) else {
+            return LayoutApplyStepBudget.floor
+        }
+        let manageableCount = cache.keepingOnlyManageableItems().allItems.count
+        return LayoutApplyStepBudget.stepLimit(manageableItemCount: manageableCount)
     }
 
     private func applyNextStep(preferredItemUID: String? = nil) async -> LayoutApplicationResult {
@@ -186,9 +201,12 @@ final class LayoutApplicationController {
                 return .satisfied
             }
 
-            guard plannedMove.itemUID == uid else {
-                CoronaDebugLog.log("layout.applyPreferredStep ignoredUnrelated preferred=\(uid) planned=\(plannedMove.itemUID)")
-                return .satisfied
+            if plannedMove.itemUID != uid {
+                // The planner needs a prerequisite move (e.g. to free the drop
+                // position) before the preferred item can move. Perform it and
+                // report the real outcome; never claim satisfaction for a step
+                // that made no physical change.
+                CoronaDebugLog.log("layout.applyPreferredStep prerequisite preferred=\(uid) planned=\(plannedMove.itemUID)")
             }
 
             guard let item = manageableCache.item(withStableIdentifier: plannedMove.itemUID) else {

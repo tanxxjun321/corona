@@ -55,6 +55,8 @@
 		1A200000000000000000001A /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011A /* AppSettings.swift */; };
 		1A200000000000000000001B /* MenuBarHiddenPresentationPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */; };
 		1A200000000000000000001C /* MenuBarItemCanonicalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */; };
+		1A200000000000000000001D /* LayoutApplyStepBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011D /* LayoutApplyStepBudget.swift */; };
+		1A200000000000000000001E /* LayoutSatisfaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A200000000000000000011E /* LayoutSatisfaction.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -109,6 +111,8 @@
 		1A200000000000000000011A /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarHiddenPresentationPolicy.swift; sourceTree = "<group>"; };
 		1A200000000000000000011C /* MenuBarItemCanonicalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemCanonicalizer.swift; sourceTree = "<group>"; };
+		1A200000000000000000011D /* LayoutApplyStepBudget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutApplyStepBudget.swift; sourceTree = "<group>"; };
+		1A200000000000000000011E /* LayoutSatisfaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutSatisfaction.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -211,8 +215,10 @@
 			isa = PBXGroup;
 			children = (
 				1A200000000000000000010C /* LayoutApplicationPlanner.swift */,
+				1A200000000000000000011D /* LayoutApplyStepBudget.swift */,
 				1A200000000000000000010D /* LayoutDraft.swift */,
 				1A200000000000000000010E /* LayoutPlanner.swift */,
+				1A200000000000000000011E /* LayoutSatisfaction.swift */,
 				1A200000000000000000011B /* MenuBarHiddenPresentationPolicy.swift */,
 				1A200000000000000000010F /* SectionClassifier.swift */,
 				1A2000000000000000000110 /* SectionOrder.swift */,
@@ -379,8 +385,10 @@
 				1A2000000000000000000009 /* MenuBarWindowCandidateFilter.swift in Sources */,
 				1A200000000000000000000A /* SnapshotPollingGate.swift in Sources */,
 				1A200000000000000000000C /* LayoutApplicationPlanner.swift in Sources */,
+				1A200000000000000000001D /* LayoutApplyStepBudget.swift in Sources */,
 				1A200000000000000000000D /* LayoutDraft.swift in Sources */,
 				1A200000000000000000000E /* LayoutPlanner.swift in Sources */,
+				1A200000000000000000001E /* LayoutSatisfaction.swift in Sources */,
 				1A200000000000000000001B /* MenuBarHiddenPresentationPolicy.swift in Sources */,
 				1A200000000000000000000F /* SectionClassifier.swift in Sources */,
 				1A2000000000000000000010 /* SectionOrder.swift in Sources */,

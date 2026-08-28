@@ -588,56 +588,40 @@ final class MenuBarController {
 
         do {
             let cache = try await cacheController.cache(boundary: boundary)
-            let actualSectionByUID = sectionMap(for: cache)
-            let itemByUID = Dictionary(uniqueKeysWithValues: cache.allItems.map { ($0.tag.stableIdentifier, $0) })
             let savedOrder = layoutStore.loadSavedSectionOrder()
                 .removingCoronaSelfItems()
                 .removingLegacyAXGeneratedItems()
-            var desiredVisible: [String] = []
-            var mismatches: [String] = []
-
-            for section in MenuBarSection.allCases {
-                for uid in savedOrder[section] {
-                    guard let item = itemByUID[uid], item.isMovable else { continue }
-                    let targetSection: MenuBarSection = item.canBeHidden ? section : .visible
-                    if targetSection == .visible {
-                        desiredVisible.append(uid)
-                    }
-                    if actualSectionByUID[uid] != targetSection {
-                        mismatches.append("\(uid):desired=\(targetSection.rawValue),actual=\(actualSectionByUID[uid]?.rawValue ?? "missing")")
-                    }
+            let report = LayoutSatisfactionEvaluator().report(
+                cache: cache,
+                savedOrder: savedOrder,
+                isOrderManageable: { item in
+                    item.isMovable
+                        && item.canBeHidden
+                        && !Self.isCoronaSelfIdentifier(item.tag.stableIdentifier)
                 }
-            }
+            )
 
             let actualVisible = cache.visibleItems.map(\.tag.stableIdentifier)
             let actualHidden = cache.hiddenItems.map(\.tag.stableIdentifier)
             let actualAlwaysHidden = cache.alwaysHiddenItems.map(\.tag.stableIdentifier)
 
-            if !mismatches.isEmpty {
-                CoronaDebugLog.log("layout.visibleGuard failed desiredVisible=\(desiredVisible) mismatches=\(mismatches) actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden) boundaryHidden=\(boundary.hiddenControlBounds.debugDescription) boundaryAlwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
+            if !report.isSatisfied {
+                let sectionMismatches = report.sectionMismatches.map {
+                    "\($0.uid):desired=\($0.expectedSection.rawValue),actual=\($0.actualSection?.rawValue ?? "missing")"
+                }
+                let orderMismatches = report.orderMismatches.map {
+                    "\($0.section.rawValue):expected=\($0.expectedUIDs),actual=\($0.actualUIDs)"
+                }
+                CoronaDebugLog.log("layout.visibleGuard failed sectionMismatches=\(sectionMismatches) orderMismatches=\(orderMismatches) actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden) boundaryHidden=\(boundary.hiddenControlBounds.debugDescription) boundaryAlwaysHidden=\(boundary.alwaysHiddenControlBounds?.debugDescription ?? "nil")")
                 return false
             }
 
-            CoronaDebugLog.log("layout.visibleGuard satisfied desiredVisible=\(desiredVisible) actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden)")
+            CoronaDebugLog.log("layout.visibleGuard satisfied actualVisible=\(actualVisible) actualHidden=\(actualHidden) actualAlwaysHidden=\(actualAlwaysHidden)")
             return true
         } catch {
             CoronaDebugLog.log("layout.visibleGuard failed error=\(String(describing: error))")
             return false
         }
-    }
-
-    private func sectionMap(for cache: ItemCache) -> [String: MenuBarSection] {
-        var result: [String: MenuBarSection] = [:]
-        for item in cache.visibleItems {
-            result[item.tag.stableIdentifier] = .visible
-        }
-        for item in cache.hiddenItems {
-            result[item.tag.stableIdentifier] = .hidden
-        }
-        for item in cache.alwaysHiddenItems {
-            result[item.tag.stableIdentifier] = .alwaysHidden
-        }
-        return result
     }
 
     private func sanitizeSavedLayout() {
