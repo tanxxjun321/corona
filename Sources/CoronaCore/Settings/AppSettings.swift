@@ -1,16 +1,8 @@
 import Foundation
 
-public enum RehideStrategy: Int, Codable, CaseIterable, Equatable, Sendable {
-    case smart = 0
-    case timer = 1
-    case appSwitch = 2
-}
-
 public struct AppSettings: Codable, Equatable, Sendable {
-    public var launchAtLogin: Bool
     public var showMainIcon: Bool
     public var autoRehide: Bool
-    public var rehideStrategy: RehideStrategy
     public var rehideInterval: TimeInterval
     public var newItemsSection: MenuBarSection
     public var newItemsPlacement: NewItemsPlacement
@@ -19,10 +11,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var enableDiagnosticLogging: Bool
 
     public init(
-        launchAtLogin: Bool = false,
         showMainIcon: Bool = true,
         autoRehide: Bool = true,
-        rehideStrategy: RehideStrategy = .timer,
         rehideInterval: TimeInterval = 8,
         newItemsSection: MenuBarSection = .visible,
         newItemsPlacement: NewItemsPlacement = .append,
@@ -30,10 +20,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         enableScreenRecordingPreviews: Bool = false,
         enableDiagnosticLogging: Bool = false
     ) {
-        self.launchAtLogin = launchAtLogin
         self.showMainIcon = showMainIcon
         self.autoRehide = autoRehide
-        self.rehideStrategy = rehideStrategy
         self.rehideInterval = rehideInterval
         self.newItemsSection = newItemsSection
         self.newItemsPlacement = newItemsPlacement

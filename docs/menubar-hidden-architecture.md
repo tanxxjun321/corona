@@ -393,7 +393,6 @@ ItemManager.pinnedAlwaysHiddenBundleIDs: [String]
 Settings.newItemsSection: String
 Settings.newItemsPlacement: Data
 Settings.autoRehide: Bool
-Settings.rehideStrategy: Int
 Settings.rehideInterval: Double
 Settings.enableAlwaysHiddenSection: Bool
 ```

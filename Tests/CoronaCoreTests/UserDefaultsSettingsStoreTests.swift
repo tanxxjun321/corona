@@ -19,10 +19,8 @@ final class UserDefaultsSettingsStoreTests: XCTestCase {
 
         let store = UserDefaultsSettingsStore(defaults: defaults)
         let expected = AppSettings(
-            launchAtLogin: true,
             showMainIcon: false,
             autoRehide: false,
-            rehideStrategy: .timer,
             rehideInterval: 12,
             newItemsSection: .alwaysHidden,
             newItemsPlacement: .rightOf("com.example.MenuItem:Status"),

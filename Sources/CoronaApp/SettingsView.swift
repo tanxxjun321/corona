@@ -166,7 +166,10 @@ private struct GeneralSettingsPane: View {
 
     var body: some View {
         Form {
-            Toggle("Launch at login", isOn: $model.settings.launchAtLogin)
+            Toggle("Launch at login", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
             Toggle("Show main menu bar icon", isOn: $model.settings.showMainIcon)
             Toggle("Enable always-hidden section", isOn: $model.settings.enableAlwaysHiddenSection)
             Picker("New items", selection: $model.settings.newItemsSection) {
@@ -177,6 +180,9 @@ private struct GeneralSettingsPane: View {
         }
         .formStyle(.grouped)
         .padding(24)
+        .onAppear {
+            model.refreshLaunchAtLogin()
+        }
     }
 }
 
@@ -197,9 +203,6 @@ private struct BehaviorSettingsPane: View {
         }
         .formStyle(.grouped)
         .padding(24)
-        .onAppear {
-            model.settings.rehideStrategy = .timer
-        }
     }
 }
 

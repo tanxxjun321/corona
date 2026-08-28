@@ -1,4 +1,5 @@
 import Foundation
+import ServiceManagement
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
@@ -7,6 +8,8 @@ final class SettingsViewModel: ObservableObject {
             onSettingsChanged(settings)
         }
     }
+
+    @Published private(set) var launchAtLogin: Bool
 
     @Published private(set) var permissions: PermissionSnapshot
 
@@ -22,9 +25,28 @@ final class SettingsViewModel: ObservableObject {
     ) {
         self.settings = settings
         self.permissionChecker = permissionChecker
+        self.launchAtLogin = SMAppService.mainApp.status == .enabled
         self.permissions = permissionChecker.snapshot()
         self.onSettingsChanged = onSettingsChanged
         self.onPermissionsChanged = onPermissionsChanged
+    }
+
+    func refreshLaunchAtLogin() {
+        launchAtLogin = SMAppService.mainApp.status == .enabled
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        let service = SMAppService.mainApp
+        do {
+            if enabled {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            CoronaDebugLog.log("Launch at login \(enabled ? "register" : "unregister") failed: \(error.localizedDescription)")
+        }
+        launchAtLogin = service.status == .enabled
     }
 
     func refreshPermissions() {
