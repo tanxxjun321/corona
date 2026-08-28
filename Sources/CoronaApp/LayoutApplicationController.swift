@@ -468,7 +468,7 @@ final class LayoutApplicationController {
         let settings = settingsStore.load()
         return LayoutPreference(
             savedOrder: layoutStore.loadSavedSectionOrder(),
-            newItemsSection: MenuBarSection(settings.newItemsSection),
+            newItemsSection: settings.newItemsSection,
             newItemsPlacement: settings.newItemsPlacement,
             alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
         )
@@ -499,19 +499,6 @@ final class LayoutApplicationController {
         return preference
     }
 
-}
-
-private extension MenuBarSection {
-    init(_ newItemsSection: NewItemsSection) {
-        switch newItemsSection {
-        case .visible:
-            self = .visible
-        case .hidden:
-            self = .hidden
-        case .alwaysHidden:
-            self = .alwaysHidden
-        }
-    }
 }
 
 private extension SectionOrder {

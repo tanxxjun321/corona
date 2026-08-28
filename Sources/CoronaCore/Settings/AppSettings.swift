@@ -1,11 +1,5 @@
 import Foundation
 
-public enum NewItemsSection: String, Codable, CaseIterable, Equatable, Sendable {
-    case visible
-    case hidden
-    case alwaysHidden
-}
-
 public enum RehideStrategy: Int, Codable, CaseIterable, Equatable, Sendable {
     case smart = 0
     case timer = 1
@@ -18,7 +12,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var autoRehide: Bool
     public var rehideStrategy: RehideStrategy
     public var rehideInterval: TimeInterval
-    public var newItemsSection: NewItemsSection
+    public var newItemsSection: MenuBarSection
     public var newItemsPlacement: NewItemsPlacement
     public var enableAlwaysHiddenSection: Bool
     public var enableScreenRecordingPreviews: Bool
@@ -30,7 +24,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         autoRehide: Bool = true,
         rehideStrategy: RehideStrategy = .timer,
         rehideInterval: TimeInterval = 8,
-        newItemsSection: NewItemsSection = .visible,
+        newItemsSection: MenuBarSection = .visible,
         newItemsPlacement: NewItemsPlacement = .append,
         enableAlwaysHiddenSection: Bool = false,
         enableScreenRecordingPreviews: Bool = false,

@@ -1,6 +1,6 @@
 import Foundation
 
-public enum MenuBarSection: String, Codable, CaseIterable, Sendable {
+public enum MenuBarSection: String, Codable, CaseIterable, Equatable, Sendable {
     case visible
     case hidden
     case alwaysHidden

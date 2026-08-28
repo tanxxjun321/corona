@@ -40,7 +40,7 @@ final class UserDefaultsSettingsStoreTests: XCTestCase {
         let suiteName = "CoronaTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(NewItemsSection.hidden.rawValue, forKey: "Settings.newItemsSection")
+        defaults.set(MenuBarSection.hidden.rawValue, forKey: "Settings.newItemsSection")
 
         let settings = UserDefaultsSettingsStore(defaults: defaults).load()
 

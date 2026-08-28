@@ -170,9 +170,9 @@ private struct GeneralSettingsPane: View {
             Toggle("Show main menu bar icon", isOn: $model.settings.showMainIcon)
             Toggle("Enable always-hidden section", isOn: $model.settings.enableAlwaysHiddenSection)
             Picker("New items", selection: $model.settings.newItemsSection) {
-                Text("Visible").tag(NewItemsSection.visible)
-                Text("Hidden").tag(NewItemsSection.hidden)
-                Text("Always Hidden").tag(NewItemsSection.alwaysHidden)
+                Text("Visible").tag(MenuBarSection.visible)
+                Text("Hidden").tag(MenuBarSection.hidden)
+                Text("Always Hidden").tag(MenuBarSection.alwaysHidden)
             }
         }
         .formStyle(.grouped)

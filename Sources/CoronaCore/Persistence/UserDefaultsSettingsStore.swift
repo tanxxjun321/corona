@@ -33,7 +33,7 @@ public final class UserDefaultsSettingsStore: SettingsStore {
             autoRehide: bool(forKey: Key.autoRehide, default: defaults.autoRehide),
             rehideStrategy: RehideStrategy(rawValue: integer(forKey: Key.rehideStrategy, default: defaults.rehideStrategy.rawValue)) ?? defaults.rehideStrategy,
             rehideInterval: double(forKey: Key.rehideInterval, default: defaults.rehideInterval),
-            newItemsSection: NewItemsSection(rawValue: string(forKey: Key.newItemsSection, default: defaults.newItemsSection.rawValue)) ?? defaults.newItemsSection,
+            newItemsSection: MenuBarSection(rawValue: string(forKey: Key.newItemsSection, default: defaults.newItemsSection.rawValue)) ?? defaults.newItemsSection,
             newItemsPlacement: codable(forKey: Key.newItemsPlacement, default: defaults.newItemsPlacement),
             enableAlwaysHiddenSection: bool(forKey: Key.enableAlwaysHiddenSection, default: defaults.enableAlwaysHiddenSection),
             enableScreenRecordingPreviews: bool(forKey: Key.enableScreenRecordingPreviews, default: defaults.enableScreenRecordingPreviews),
@@ -86,8 +86,8 @@ public final class UserDefaultsSettingsStore: SettingsStore {
     private func migrateUnsafeDefaultsIfNeeded() {
         guard defaults.object(forKey: Key.migratedDefaultNewItemsSection) == nil else { return }
 
-        if defaults.string(forKey: Key.newItemsSection) == NewItemsSection.hidden.rawValue {
-            defaults.set(NewItemsSection.visible.rawValue, forKey: Key.newItemsSection)
+        if defaults.string(forKey: Key.newItemsSection) == MenuBarSection.hidden.rawValue {
+            defaults.set(MenuBarSection.visible.rawValue, forKey: Key.newItemsSection)
         }
         defaults.set(true, forKey: Key.migratedDefaultNewItemsSection)
     }

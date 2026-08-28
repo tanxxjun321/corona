@@ -438,7 +438,7 @@ final class MainPanelViewModel: ObservableObject {
                 positionByUID = Self.positionMap(for: manageableItems)
                 physicalSectionByUID = Self.sectionMap(for: cache)
                 let settings = settingsStore.load()
-                newItemsSection = MenuBarSection(settings.newItemsSection)
+                newItemsSection = settings.newItemsSection
                 newItemsPlacement = settings.newItemsPlacement
                 let preferredOrder = organizerOrder(cache: physicalCache, settings: settings)
                 let sanitizedOrder = availableOrder(preferredOrder)
@@ -529,7 +529,7 @@ final class MainPanelViewModel: ObservableObject {
         let canonicalIndex = canonicalInsertionIndex(section: section, displayedIndex: index, itemCount: sanitizedOrder[section].count)
         let placement = newItemsPlacement(for: section, index: canonicalIndex, order: sanitizedOrder)
         var settings = settingsStore.load()
-        settings.newItemsSection = NewItemsSection(section)
+        settings.newItemsSection = section
         settings.newItemsPlacement = placement
         settingsStore.save(settings)
         newItemsSection = section
@@ -833,7 +833,7 @@ final class MainPanelViewModel: ObservableObject {
             cache: cache,
             preference: LayoutPreference(
                 savedOrder: savedOrder,
-                newItemsSection: MenuBarSection(settings.newItemsSection),
+                newItemsSection: settings.newItemsSection,
                 newItemsPlacement: settings.newItemsPlacement,
                 alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
             )
@@ -858,7 +858,7 @@ final class MainPanelViewModel: ObservableObject {
         let settings = settingsStore.load()
         return LayoutPreference(
             savedOrder: layoutStore.loadSavedSectionOrder(),
-            newItemsSection: MenuBarSection(settings.newItemsSection),
+            newItemsSection: settings.newItemsSection,
             newItemsPlacement: settings.newItemsPlacement,
             alwaysHiddenEnabled: settings.enableAlwaysHiddenSection
         )
@@ -1743,17 +1743,6 @@ private struct MenuBarRailBackground: View {
 }
 
 private extension MenuBarSection {
-    init(_ newItemsSection: NewItemsSection) {
-        switch newItemsSection {
-        case .visible:
-            self = .visible
-        case .hidden:
-            self = .hidden
-        case .alwaysHidden:
-            self = .alwaysHidden
-        }
-    }
-
     var label: String {
         switch self {
         case .visible:
@@ -1762,19 +1751,6 @@ private extension MenuBarSection {
             return "hidden"
         case .alwaysHidden:
             return "always hidden"
-        }
-    }
-}
-
-private extension NewItemsSection {
-    init(_ section: MenuBarSection) {
-        switch section {
-        case .visible:
-            self = .visible
-        case .hidden:
-            self = .hidden
-        case .alwaysHidden:
-            self = .alwaysHidden
         }
     }
 }
